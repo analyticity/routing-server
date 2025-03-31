@@ -1,2 +1,8 @@
-fastapi==0.115.11
-uvicorn==0.34.0
+fastapi==0.115.12
+geopandas==1.0.1
+geopy==2.4.1
+networkx==3.4.2
+osm2geojson==0.2.5
+pydantic==2.11.1
+Requests==2.32.3
+Shapely==2.0.7

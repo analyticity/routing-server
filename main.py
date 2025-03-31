@@ -42,7 +42,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
 
     return {
         "streets_coord": [],
-        "route": route,
+        "route": list(route.coords),
         "src_street": "",
         "dst_street": "",
     }

@@ -1,5 +1,5 @@
 import networkx as nx
-from shapely import Point
+from shapely import LineString, Point
 
 
 def find_nearest_node(graph: nx.MultiDiGraph, point: Point) -> str:
@@ -13,6 +13,7 @@ def find_nearest_node(graph: nx.MultiDiGraph, point: Point) -> str:
     Returns:
         str: Coordinate of the nearest node.
     """
+    # Todo: Create a new node on the graph which will be the closest to the point going perpendicular to the street
     node = None
     min_distance = float("inf")
     for n in graph.nodes():
@@ -29,7 +30,7 @@ def find_route(
     destination_coord: Point,
     # start_date: datetime,
     # end_date: datetime,
-) -> list:
+) -> LineString:
     """
     Find the shortest path between two coordinates in a graph.
 
@@ -47,15 +48,13 @@ def find_route(
 
     try:
         path = nx.shortest_path(graph, source_node, destination_node, weight="weight")
+        path = [Point(coord) for coord in path]
     except nx.NetworkXNoPath:
         return []
     except nx.NodeNotFound:
         return []
 
-    path_coords = []
+    path.insert(0, source_coord)
+    path.append(destination_coord)
 
-    path_coords.append(source_node)
-    path_coords.extend(path)
-    path_coords.append(destination_node)
-
-    return path_coords
+    return LineString(path)

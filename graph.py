@@ -64,6 +64,7 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
 
     return graph
 
+
 def get_routing_base(area: str) -> gpd.GeoDataFrame:
     """
     Retrieve current map data for a given area from OpenStreetMap and convert it to a GeoDataFrame.

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shapely import Point
@@ -22,23 +24,18 @@ graph = create_graph_from_base(base)
 
 @app.post("/find_route_by_coord")
 async def find_route_by_coord(body: RoutingCoordRequestBody):
+    """Finds the route between two coordinates in the given timeframe."""
     source_coord = Point((body.src_coord))
     destination_coord = Point((body.dst_coord))
-    # start_date = body.from_time
-    # end_date = body.to_time
+    start_date = datetime.strptime(body.from_time, "%Y-%m-%d").date()
+    end_date = datetime.strptime(body.to_time, "%Y-%m-%d").date()
 
     print(f"Source: {source_coord}")
     print(f"Destination: {destination_coord}")
-    # print(f"From: {start_date}")
-    # print(f"To: {end_date}")
+    print(f"From: {start_date}")
+    print(f"To: {end_date}")
 
-    route = find_route(
-        graph,
-        source_coord,
-        destination_coord,
-        # start_date,
-        # end_date
-    )
+    route = find_route(graph, source_coord, destination_coord, start_date, end_date)
 
     return {
         "streets_coord": [],

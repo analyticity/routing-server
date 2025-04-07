@@ -38,10 +38,11 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
 
     for _, row in routing_base.iterrows():
         geometry = row.geometry
-        tags = row.get("tags", {})
+        name = row.get("name", "")
+        highway = row.get("highway", "unclassified")  # Type of road
+        oneway = row.get("oneway", "no")
 
-        road_type = tags.get("highway", "unclassified")  # Default to unclassified
-        speed = speeds.get(road_type, 8.33)  # Default to 30 km/h
+        speed = speeds.get(highway, 8.33)  # Default to 30 km/h
 
         if isinstance(geometry, (LineString, MultiLineString)):
             coords = list(geometry.coords)
@@ -57,10 +58,18 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
                 )  # Avoid division by zero
 
                 # Add edges to the graph
-                graph.add_edge(Point(start), Point(end), weight=weight)
+                graph.add_edge(
+                    Point(start), Point(end), weight=weight, name=name, highway=highway
+                )
                 # Add reverse edge if not one-way
-                if "oneway" not in tags or tags["oneway"] == "no":
-                    graph.add_edge(Point(end), Point(start), weight=weight)
+                if oneway == "no":
+                    graph.add_edge(
+                        Point(end),
+                        Point(start),
+                        weight=weight,
+                        name=name,
+                        highway=highway,
+                    )
 
     return graph
 
@@ -76,5 +85,10 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
         gpd.GeoDataFrame: GeoDataFrame containing the routing base data.
     """
     osm_data = osm_data_for_area(area)
-    routing_base = gpd.GeoDataFrame.from_features(osm_data["features"])
+    routing_base = gpd.GeoDataFrame.from_features(osm_data["features"], crs="OGC:CRS84")
+    tags_to_extract = ["name", "highway", "oneway"]
+    for tag in tags_to_extract:
+        routing_base[tag] = routing_base["tags"].apply(lambda x: x.get(tag, ""))
+    routing_base = routing_base.drop(columns=["tags"])
+
     return routing_base

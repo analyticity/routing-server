@@ -17,8 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+AREA = "Brno"
 
-base = get_routing_base("Brno")
+base = get_routing_base(AREA)
 graph = create_graph_from_base(base)
 
 

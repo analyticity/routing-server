@@ -1,3 +1,5 @@
+# graph.py
+
 import geopandas as gpd
 import networkx as nx
 from geopy.distance import geodesic
@@ -38,10 +40,14 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
 
     for _, row in routing_base.iterrows():
         geometry = row.geometry
+        id = row.get("id", "")
         name = row.get("name", "")
-        highway = row.get("highway", "unclassified")  # Type of road
-        oneway = row.get("oneway", "no")
-
+        highway = row.get(
+            "highway", "unclassified"
+        )  # Type of road, default to "unclassified"
+        oneway = row.get("oneway", "no")  # Default to "no"
+        if oneway != "yes":
+            oneway = "no"
         speed = speeds.get(highway, 8.33)  # Default to 30 km/h
 
         if isinstance(geometry, (LineString, MultiLineString)):
@@ -50,25 +56,37 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
                 start = coords[i]
                 end = coords[i + 1]
 
-                distance = geodesic(
+                length = geodesic(
                     (start[1], start[0]), (end[1], end[0])
                 ).meters  # geodesic takes (lat, lon)
-                weight = (
-                    distance / speed if speed > 0 else distance
+                traversal_time = (
+                    length / speed if speed > 0 else length
                 )  # Avoid division by zero
 
                 # Add edges to the graph
                 graph.add_edge(
-                    Point(start), Point(end), weight=weight, name=name, highway=highway
+                    Point(start),
+                    Point(end),
+                    geometry=LineString([Point(start), Point(end)]),
+                    id=id,
+                    name=name,
+                    highway=highway,
+                    length=length,
+                    traversal_time=traversal_time,
+                    oneway=oneway,
                 )
                 # Add reverse edge if not one-way
                 if oneway == "no":
                     graph.add_edge(
                         Point(end),
                         Point(start),
-                        weight=weight,
+                        geometry=LineString([Point(end), Point(start)]),
+                        id=id,
                         name=name,
                         highway=highway,
+                        length=length,
+                        traversal_time=traversal_time,
+                        oneway=oneway,
                     )
 
     return graph
@@ -89,6 +107,16 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
     tags_to_extract = ["name", "highway", "oneway"]
     for tag in tags_to_extract:
         routing_base[tag] = routing_base["tags"].apply(lambda x: x.get(tag, ""))
+    
+    # Debug for visualization on geojson.io
+    routing_base["stroke"] = routing_base.apply(
+        lambda x: "#{:06x}".format(hash(x["geometry"]) % 0xFFFFFF), axis=1
+    )
+    routing_base["stroke-width"] = 10
+    
     routing_base = routing_base.drop(columns=["tags"])
+
+    # Save the routing base to a GeoJSON file
+    routing_base.to_file("data/sample_routing_base.geojson", driver="GeoJSON")
 
     return routing_base

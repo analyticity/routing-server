@@ -1,3 +1,5 @@
+# routing.py
+
 from datetime import datetime
 from heapq import heappop, heappush
 
@@ -40,6 +42,8 @@ def astar_route(
         nx.NetworkXNoPath: If no path exists between source and destination.
         nx.NodeNotFound: If source or destination node is not found in the graph.
     """
+    weight_property = "traversal_time"  # Graph's edge attribute for weight
+
     open_set = []  # (f_score, counter, node)
     heappush(open_set, (0, 0, source_node))
     came_from = {}
@@ -59,7 +63,7 @@ def astar_route(
             return LineString(path)
 
         for neighbor in graph.neighbors(current):
-            weight = graph[current][neighbor][0].get("weight", 1)
+            weight = graph[current][neighbor][0].get(weight_property, 1)
             tentative_g = g_score[current] + weight
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
                 came_from[neighbor] = current

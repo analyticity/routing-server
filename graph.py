@@ -1,11 +1,139 @@
 # graph.py
 
+from typing import Tuple
+
 import geopandas as gpd
 import networkx as nx
 from geopy.distance import geodesic
 from shapely.geometry import LineString, MultiLineString, Point
 
 from osm import osm_data_for_area
+
+
+def find_projected_point(graph: nx.MultiDiGraph, point: Point) -> Tuple[Point, dict]:
+    """
+    Finds the closest edge to a point and projects the point onto that edge's linestring.
+
+    Args:
+        graph (nx.MultiDiGraph): The graph with edges containing geometry data.
+        point (Point): The point to project.
+
+    Returns:
+        Tuple[Point, dict]: The projected point and edge data {'u': u, 'v': v, 'edge': edge},
+        or (None, None) if no valid edges are found.
+    """
+    if not graph.edges():
+        return None, None
+
+    closest_edge = None
+    min_distance = float("inf")
+
+    for u, v, edge in graph.edges(data=True):
+        geometry = edge.get("geometry")
+        if isinstance(geometry, LineString):
+            distance = point.distance(geometry)
+            if distance < min_distance:
+                min_distance = distance
+                closest_edge = {"u": u, "v": v, "edge": edge}
+
+    if closest_edge is None:
+        return None, None
+
+    geometry = closest_edge["edge"]["geometry"]
+    projected_point = geometry.interpolate(geometry.project(point))
+    return projected_point, closest_edge
+
+
+def split_edge_at_point(
+    graph: nx.MultiDiGraph, projected_point: Point, edge_data: dict
+) -> Point:
+    """
+    Splits an edge at the projected point, replacing it with two new edges in the graph.
+    Maintains original edge properties, recalculating length and traversal time.
+
+    Args:
+        graph (nx.MultiDiGraph): The graph to modify.
+        projected_point (Point): The point where the edge should be split.
+        edge_data (dict): Edge data containing 'u', 'v', and 'edge' with properties.
+
+    Returns:
+        Point: The projected point (new node) added to the graph.
+    """
+    p = projected_point
+    u, v = edge_data["u"], edge_data["v"]
+    edge = edge_data["edge"]
+
+    # Extract edge properties
+    edge_id = edge.get("id")
+    name = edge.get("name", "")
+    highway = edge.get("highway", "unclassified")
+    oneway = edge.get("oneway", "no")
+    speed = edge.get("speed", 8.33)  # Default 30 km/h
+
+    # Create new segments
+    line1 = LineString([u, p])
+    line2 = LineString([p, v])
+    length1 = geodesic((u.y, u.x), (p.y, p.x)).meters
+    length2 = geodesic((p.y, p.x), (v.y, v.x)).meters
+    traversal_time1 = length1 / speed if speed > 0 else length1
+    traversal_time2 = length2 / speed if speed > 0 else length2
+
+    # Update graph
+    graph.add_node(p)
+    graph.add_edge(
+        u,
+        p,
+        geometry=line1,
+        id=edge_id,
+        name=name,
+        highway=highway,
+        length=length1,
+        traversal_time=traversal_time1,
+        oneway=oneway,
+    )
+    graph.add_edge(
+        p,
+        v,
+        geometry=line2,
+        id=edge_id,
+        name=name,
+        highway=highway,
+        length=length2,
+        traversal_time=traversal_time2,
+        oneway=oneway,
+    )
+
+    # Remove original edge
+    graph.remove_edge(u, v)
+
+    # Handle bidirectional edges
+    if oneway == "no":
+        graph.add_edge(
+            p,
+            u,
+            geometry=line1.reverse(),
+            id=edge_id,
+            name=name,
+            highway=highway,
+            length=length1,
+            traversal_time=traversal_time1,
+            oneway=oneway,
+        )
+        graph.add_edge(
+            v,
+            p,
+            geometry=line2.reverse(),
+            id=edge_id,
+            name=name,
+            highway=highway,
+            length=length2,
+            traversal_time=traversal_time2,
+            oneway=oneway,
+        )
+        if graph.has_edge(v, u):
+            graph.remove_edge(v, u)
+
+    return p
 
 
 def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
@@ -107,13 +235,13 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
     tags_to_extract = ["name", "highway", "oneway"]
     for tag in tags_to_extract:
         routing_base[tag] = routing_base["tags"].apply(lambda x: x.get(tag, ""))
-    
+
     # Debug for visualization on geojson.io
     routing_base["stroke"] = routing_base.apply(
         lambda x: "#{:06x}".format(hash(x["geometry"]) % 0xFFFFFF), axis=1
     )
     routing_base["stroke-width"] = 10
-    
+
     routing_base = routing_base.drop(columns=["tags"])
 
     # Save the routing base to a GeoJSON file

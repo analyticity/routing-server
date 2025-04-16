@@ -4,7 +4,6 @@ from typing import Tuple
 
 import geopandas as gpd
 import networkx as nx
-from geopy.distance import geodesic
 from shapely.geometry import LineString, MultiLineString, Point
 
 from osm import osm_data_for_area
@@ -62,6 +61,10 @@ def split_edge_at_point(
     p = projected_point
     u, v = edge_data["u"], edge_data["v"]
     edge = edge_data["edge"]
+    
+    # Check if the edge is already split
+    if graph.has_node(p):
+        return p
 
     # Extract edge properties
     edge_id = edge.get("id")
@@ -69,12 +72,13 @@ def split_edge_at_point(
     highway = edge.get("highway", "unclassified")
     oneway = edge.get("oneway", "no")
     speed = edge.get("speed", 8.33)  # Default 30 km/h
+    is_blocked = edge.get("is_blocked", False)
 
     # Create new segments
     line1 = LineString([u, p])
     line2 = LineString([p, v])
-    length1 = geodesic((u.y, u.x), (p.y, p.x)).meters
-    length2 = geodesic((p.y, p.x), (v.y, v.x)).meters
+    length1 = u.distance(p)
+    length2 = p.distance(v)
     traversal_time1 = length1 / speed if speed > 0 else length1
     traversal_time2 = length2 / speed if speed > 0 else length2
 
@@ -90,6 +94,7 @@ def split_edge_at_point(
         length=length1,
         traversal_time=traversal_time1,
         oneway=oneway,
+        is_blocked=is_blocked,
     )
     graph.add_edge(
         p,
@@ -101,6 +106,7 @@ def split_edge_at_point(
         length=length2,
         traversal_time=traversal_time2,
         oneway=oneway,
+        is_blocked=is_blocked,
     )
 
     # Remove original edge
@@ -118,6 +124,7 @@ def split_edge_at_point(
             length=length1,
             traversal_time=traversal_time1,
             oneway=oneway,
+            is_blocked=is_blocked,
         )
         graph.add_edge(
             v,
@@ -129,6 +136,7 @@ def split_edge_at_point(
             length=length2,
             traversal_time=traversal_time2,
             oneway=oneway,
+            is_blocked=is_blocked,
         )
         if graph.has_edge(v, u):
             graph.remove_edge(v, u)
@@ -177,44 +185,49 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
         if oneway != "yes":
             oneway = "no"
         speed = speeds.get(highway, 8.33)  # Default to 30 km/h
+        is_blocked = row.get("is_blocked", False)
 
         if isinstance(geometry, (LineString, MultiLineString)):
             coords = list(geometry.coords)
             for i in range(len(coords) - 1):
-                start = coords[i]
-                end = coords[i + 1]
+                start_coord = coords[i]
+                end_coord = coords[i + 1]
 
-                length = geodesic(
-                    (start[1], start[0]), (end[1], end[0])
-                ).meters  # geodesic takes (lat, lon)
+                start_node = Point(start_coord)
+                end_node = Point(end_coord)
+                
+                length = start_node.distance(end_node)
+                
                 traversal_time = (
-                    length / speed if speed > 0 else length
-                )  # Avoid division by zero
+                    length / speed if speed > 0 else length / speeds.get("unclassified")
+                ) 
 
                 # Add edges to the graph
                 graph.add_edge(
-                    Point(start),
-                    Point(end),
-                    geometry=LineString([Point(start), Point(end)]),
+                    start_node,
+                    end_node,
+                    geometry=LineString([start_node, end_node]),
                     id=id,
                     name=name,
                     highway=highway,
                     length=length,
                     traversal_time=traversal_time,
                     oneway=oneway,
+                    is_blocked=is_blocked,
                 )
                 # Add reverse edge if not one-way
                 if oneway == "no":
                     graph.add_edge(
-                        Point(end),
-                        Point(start),
-                        geometry=LineString([Point(end), Point(start)]),
+                        end_node,
+                        start_node,
+                        geometry=LineString([end_node, start_node]),
                         id=id,
                         name=name,
                         highway=highway,
                         length=length,
                         traversal_time=traversal_time,
                         oneway=oneway,
+                        is_blocked=is_blocked,
                     )
 
     return graph
@@ -232,6 +245,8 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
     """
     osm_data = osm_data_for_area(area)
     routing_base = gpd.GeoDataFrame.from_features(osm_data["features"], crs="OGC:CRS84")
+    # Convert to WGS84
+    routing_base = routing_base.to_crs("EPSG:32633")
     tags_to_extract = ["name", "highway", "oneway"]
     for tag in tags_to_extract:
         routing_base[tag] = routing_base["tags"].apply(lambda x: x.get(tag, ""))
@@ -245,6 +260,6 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
     routing_base = routing_base.drop(columns=["tags"])
 
     # Save the routing base to a GeoJSON file
-    routing_base.to_file("data/sample_routing_base.geojson", driver="GeoJSON")
+    # routing_base.to_file("data/sample_routing_base.geojson", driver="GeoJSON")
 
     return routing_base

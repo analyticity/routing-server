@@ -22,7 +22,7 @@ def osm_data_for_area(area: str) -> dict:
     [out:json][timeout:25];
     area[name="{area}"]->.searchArea;
     (
-        way["highway"~"motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street"]["access"!~"private"]["motor_vehicle"!~"no"](area.searchArea);
+        way["highway"~"motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service"]["access"!~"private|no"]["motor_vehicle"!~"no"]["vehicle"!~"private"](area.searchArea);
     );
     out body;
     >;

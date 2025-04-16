@@ -38,11 +38,28 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
     print(f"From: {start_date}")
     print(f"To: {end_date}")
 
-    route = find_route(graph, source_coord, destination_coord, start_date, end_date)
+    # Convert coordinates from CRS EPSG:4326 to CRS EPSG:32633
+    source = gpd.GeoSeries([source_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
+    destination = (
+        gpd.GeoSeries([destination_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
+    )
 
-    return {
-        "streets_coord": [],
-        "route": list(route.coords),
-        "src_street": "",
-        "dst_street": "",
-    }
+    route = find_route(graph, source, destination, start_date, end_date)
+
+    if route:
+        # Convert route back to WGS84 for output
+        route = gpd.GeoSeries([route], crs="EPSG:32633").to_crs("EPSG:4326")[0]
+        return {
+            "streets_coord": [],
+            "route": list(route.coords),
+            "src_street": "",
+            "dst_street": "",
+        }
+    else:
+        # No route found
+        return {
+            "streets_coord": [],
+            "route": [],
+            "src_street": "",
+            "dst_street": "",
+        }

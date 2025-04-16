@@ -4,8 +4,8 @@ from datetime import datetime
 from heapq import heappop, heappush
 
 import networkx as nx
-from geopy.distance import geodesic
 from shapely import LineString, Point
+from graph import find_projected_point, split_edge_at_point
 
 
 def straightline_heuristic(a: Point, b: Point) -> float:
@@ -21,7 +21,7 @@ def straightline_heuristic(a: Point, b: Point) -> float:
         float: Estimated traversal time in seconds.
     """
     max_speed = 27.78  # 100 km/h
-    meters = geodesic((a.y, a.x), (b.y, b.x)).meters  # geodesic takes (lat, lon)
+    meters = a.distance(b)  # Distance in meters
     return meters / max_speed
 
 
@@ -115,17 +115,27 @@ def find_route(
     Returns:
         list: List of nodes in the path from source to destination.
     """
-    source_node = find_nearest_node(graph, source_coord)
-    destination_node = find_nearest_node(graph, destination_coord)
+    # Use nearest node for source and destination without splitting the edges
+    # source_node = find_nearest_node(graph, source_coord)
+    # destination_node = find_nearest_node(graph, destination_coord)
+
+    # Use projected point for source and destination, splitting the edges
+    source_node, source_edge = find_projected_point(graph, source_coord)
+    destination_node, destination_edge = find_projected_point(graph, destination_coord)
+
+    if source_node and destination_node:
+        source_node = split_edge_at_point(graph, source_node, source_edge)
+        destination_node = split_edge_at_point(
+            graph, destination_node, destination_edge
+        )
+    else:
+        return []
 
     try:
         path = astar_route(graph, source_node, destination_node)
-    except nx.NetworkXNoPath:
-        return []
-    except nx.NodeNotFound:
+    except nx.NetworkXNoPath or nx.NodeNotFound:
         return []
 
-    # Add source and destination coordinates to the path to complete
-    path = LineString([source_coord] + list(path.coords) + [destination_coord])
+    path = LineString(list(path.coords))
 
     return path

@@ -1,7 +1,8 @@
 # main.py
-
+from copy import deepcopy
 from datetime import datetime
 
+import geopandas as gpd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shapely import Point
@@ -9,6 +10,7 @@ from shapely import Point
 from graph import create_graph_from_base, get_routing_base
 from models import RoutingCoordRequestBody
 from routing import find_route
+from traffic import get_edge_jam_overlaps, load_traffic_data, update_graph_with_traffic
 
 app = FastAPI()
 app.add_middleware(
@@ -22,7 +24,22 @@ app.add_middleware(
 AREA = "Brno"
 
 base = get_routing_base(AREA)
-graph = create_graph_from_base(base)
+unmodified_graph = create_graph_from_base(base)
+traffic = load_traffic_data("data/processed_jams.geojson")
+
+days = sorted(traffic["date"].unique())[-3:]
+traffic_subset = traffic[(traffic["date"] >= days[0]) & (traffic["date"] <= days[-1])]
+
+graph = deepcopy(unmodified_graph)
+edge_jam_overlaps = get_edge_jam_overlaps(
+    graph=graph,
+    traffic=traffic_subset,
+)
+new_graph = update_graph_with_traffic(
+    graph=graph,
+    edge_jam_overlaps=edge_jam_overlaps,
+    date_range=len(traffic_subset["date"].unique()),
+)
 
 
 @app.post("/find_route_by_coord")
@@ -44,7 +61,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
         gpd.GeoSeries([destination_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
     )
 
-    route = find_route(graph, source, destination, start_date, end_date)
+    route = find_route(graph=graph, source_coord=source, destination_coord=destination)
 
     if route:
         # Convert route back to WGS84 for output

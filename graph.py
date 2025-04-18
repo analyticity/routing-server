@@ -255,7 +255,7 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
     routing_base["stroke"] = routing_base.apply(
         lambda x: "#{:06x}".format(hash(x["geometry"]) % 0xFFFFFF), axis=1
     )
-    routing_base["stroke-width"] = 10
+    routing_base["stroke-width"] = 5
 
     routing_base = routing_base.drop(columns=["tags"])
 

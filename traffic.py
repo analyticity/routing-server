@@ -14,10 +14,10 @@ def load_traffic_data(path: str) -> gpd.GeoDataFrame:
     """
     # Load the traffic data from a GeoJSON file
     traffic_data = gpd.read_file(path)
-    
+
     # Check if the data is in EPSG:4326
     if traffic_data.crs is None:
-        raise ValueError("No CRS found in the file")    
+        raise ValueError("No CRS found in the file")
     # Convert coordinates to CRS EPSG:32633
     traffic_data.to_crs("EPSG:32633", inplace=True)
 

@@ -202,68 +202,6 @@ def update_graph_with_traffic(
     return graph
 
 
-# def print_graph_edges(graph: nx.MultiDiGraph):
-#     strs = []
-#     print()
-#     # *** Iterate through u, v, AND key ***
-#     for u, v, key in week_processed_traffic:
-#         if isinstance(u, Point) and isinstance(v, Point):
-#             # *** Use the key to get the specific edge data ***
-#             edge_data = graph.get_edge_data(u, v, key=key)  # Use key=
-
-#             if edge_data is not None:
-#                 edge_geom = edge_data.get("geometry")
-#                 if isinstance(edge_geom, LineString):
-#                     strs.append(edge_geom)
-#                 else:
-#                     print(
-#                         f"Warning: Edge ({u}, {v}, k={key}) missing 'geometry'. Creating from nodes."
-#                     )
-#                     strs.append(LineString([u, v]))
-#             else:
-#                 # This case is less likely now since we iterate over existing edges
-#                 print(
-#                     f"Warning: Edge ({u}, {v}, k={key}) not found via get_edge_data. Creating from nodes."
-#                 )
-#                 strs.append(LineString([u, v]))
-#         else:
-#             print(
-#                 f"Warning: Overlap tuple contains non-Point objects: ({type(u)}, {type(v)}). Skipping."
-#             )
-
-#     # --- Rest of GeoJSON saving logic using 'strs' list ---
-#     features = []
-#     if strs:
-#         print(f"Creating GeoJSON features for {len(strs)} LineStrings...")
-#         try:
-#             gs = gpd.GeoSeries(strs, crs="EPSG:32633")
-#             gs_wgs84 = gs.to_crs("EPSG:4326")
-#             for linestring_wgs84 in gs_wgs84:
-#                 if linestring_wgs84 is None or linestring_wgs84.is_empty:
-#                     continue
-#                 geometry = linestring_wgs84.__geo_interface__
-#                 feature = {
-#                     "type": "Feature",
-#                     "geometry": geometry,
-#                     "properties": {},
-#                 }
-#                 features.append(feature)
-#         except Exception as e:
-#             print(f"Error during GeoSeries/Projection: {e}")
-
-#     geojson_data = {"type": "FeatureCollection", "features": features}
-#     try:
-#         with open("data/test_aligned_multigraph.geojson", "w") as f:  # New filename
-#             json.dump(geojson_data, f, indent=2)
-#         print(
-#             f"Aligned overlaps ({len(features)} features) saved to test_aligned_multigraph.geojson"
-#         )
-#     except Exception as e:
-#         print(f"Error writing GeoJSON: {e}")
-#     # --- End GeoJSON saving ---
-#     return graph
-
-
 def load_traffic_data(path: str) -> gpd.GeoDataFrame:
     """
     Load traffic data from a provided GeoJSON file, perform preprocessing, convert CRS and return a GeoDataFrame.

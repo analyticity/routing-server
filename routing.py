@@ -2,9 +2,11 @@
 
 from datetime import datetime
 from heapq import heappop, heappush
+from typing import Literal
 
 import networkx as nx
 from shapely import LineString, Point
+
 from graph import find_projected_point, split_edge_at_point
 
 
@@ -208,6 +210,8 @@ def find_route(
     destination_coord: Point,
     start_date: datetime.date,
     end_date: datetime.date,
+    algorithm: Literal["astar", "alt"] = "astar",
+    landmarks: list = None,
 ) -> LineString:
     """
     Find the shortest path between two coordinates in a graph.
@@ -218,30 +222,48 @@ def find_route(
         destination_coord (Point): Destination coordinate.
         start_date (datetime.date): Start date for traffic data.
         end_date (datetime.date): End date for traffic data.
+        algorithm (Literal["astar", "alt"], optional): Algorithm to use for routing, A* or ALT.
+        landmarks (list, optional): List of landmark nodes for ALT heuristic.
 
     Returns:
         list: List of nodes in the path from source to destination.
     """
-    # Use nearest node for source and destination without splitting the edges
-    # source_node = find_nearest_node(graph, source_coord)
-    # destination_node = find_nearest_node(graph, destination_coord)
+    if algorithm == "astar":
+        # Use projected point for source and destination, splitting the edges
+        source_node, source_edge = find_projected_point(graph, source_coord)
+        destination_node, destination_edge = find_projected_point(graph, destination_coord)
 
-    # Use projected point for source and destination, splitting the edges
-    source_node, source_edge = find_projected_point(graph, source_coord)
-    destination_node, destination_edge = find_projected_point(graph, destination_coord)
+        if source_node and destination_node:
+            source_node = split_edge_at_point(graph, source_node, source_edge)
+            destination_node = split_edge_at_point(
+                graph, destination_node, destination_edge
+            )
+    
+            try:
+                path = astar_route(graph, source_node, destination_node)
+            except nx.NetworkXNoPath or nx.NodeNotFound:
+                return []
+        else:
+            return []
+        
+    elif algorithm == "alt":
+        # If landmarks are not provided, raise an error
+        if landmarks is None:
+            raise ValueError("Landmarks must be provided for ALT algorithm.")
 
-    if source_node and destination_node:
-        source_node = split_edge_at_point(graph, source_node, source_edge)
-        destination_node = split_edge_at_point(
-            graph, destination_node, destination_edge
-        )
+        # Use nearest node for source and destination without splitting the edges
+        source_node = find_nearest_node(graph, source_coord)
+        destination_node = find_nearest_node(graph, destination_coord)
+
+        if source_node and destination_node:
+            try:
+                path = alt_route(graph, landmarks, source_node, destination_node)
+            except nx.NetworkXNoPath or nx.NodeNotFound:
+                return []
+        else:
+            return []
     else:
-        return []
-
-    try:
-        path = astar_route(graph, source_node, destination_node)
-    except nx.NetworkXNoPath or nx.NodeNotFound:
-        return []
+        raise ValueError("Invalid algorithm specified. Use 'astar' or 'alt'.")        
 
     path = LineString(list(path.coords))
 

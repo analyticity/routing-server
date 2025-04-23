@@ -79,35 +79,40 @@ def astar_route(
         destination_node (Point): Destination node.
 
     Returns:
-        LineString: LineString representing the path from source to destination.
-    Raises:
-        nx.NetworkXNoPath: If no path exists between source and destination.
-        nx.NodeNotFound: If source or destination node is not found in the graph.
+        LineString: LineString representing the path from source to destination,
+                    or empty LineString if no path is found.
     """
     weight_property = "traversal_time"  # Graph's edge attribute for weight
 
     open_set = []  # (f_score, counter, node)
-    heappush(open_set, (0, 0, source_node))
     came_from = {}
     g_score = {source_node: 0}
-    f_score = {source_node: straightline_heuristic(source_node, destination_node)}
+    f_score = {node: float("inf") for node in graph.nodes()}
+    f_score[source_node] = straightline_heuristic(source_node, destination_node)
     counter = 0
+    heappush(open_set, (f_score[source_node], counter, source_node))
 
     while open_set:
         f, _, current = heappop(open_set)
+
+        if f > f_score[current]:
+            continue
+
         if current == destination_node:
             path = []
-            while current in came_from:
-                path.append(current)
-                current = came_from[current]
+            temp = current
+            while temp in came_from:
+                path.append(temp)
+                temp = came_from[temp]
             path.append(source_node)
             path.reverse()
             return LineString(path)
 
         for neighbor in graph.neighbors(current):
             weight = graph[current][neighbor][0].get(weight_property, 1)
-            tentative_g = g_score[current] + weight
-            if neighbor not in g_score or tentative_g < g_score[neighbor]:
+            tentative_g = g_score.get(current, float("inf")) + weight
+
+            if tentative_g < g_score.get(neighbor, float("inf")):
                 came_from[neighbor] = current
                 g_score[neighbor] = tentative_g
                 f = tentative_g + straightline_heuristic(neighbor, destination_node)

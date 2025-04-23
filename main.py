@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shapely import Point
 
-from graph import create_graph_from_base, get_routing_base
+from graph import create_graph_from_base, get_routing_base, preprocess_alt
 from models import RoutingCoordRequestBody
 from routing import find_route
 from traffic import get_edge_jam_overlaps, load_traffic_data, update_graph_with_traffic
@@ -25,6 +25,7 @@ AREA = "Brno"
 
 base = get_routing_base(AREA)
 unmodified_graph = create_graph_from_base(base)
+landmarks = preprocess_alt(graph=unmodified_graph)
 traffic = load_traffic_data("data/processed_jams.geojson")
 
 days = sorted(traffic["date"].unique())[-3:]
@@ -61,7 +62,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
         gpd.GeoSeries([destination_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
     )
 
-    route = find_route(graph=graph, source_coord=source, destination_coord=destination)
+    route = find_route(graph=graph, source_coord=source, destination_coord=destination, algorithm="alt", landmarks=landmarks)
 
     if route:
         # Convert route back to WGS84 for output

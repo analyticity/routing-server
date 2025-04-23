@@ -123,6 +123,66 @@ def astar_route(
     return LineString([])
 
 
+def alt_route(
+    graph: nx.MultiDiGraph, landmarks: list, source_node: Point, destination_node: Point
+) -> LineString:
+    """
+    Find the shortest path between two nodes using A* with ALT heuristic.
+
+    Args:
+        graph: Graph to search in with traffic and landmark heuristic data.
+        landmarks: List of landmark nodes used for the heuristic.
+        source_node: Source node.
+        destination_node: Destination node.
+
+    Returns:
+        LineString: LineString representing the path from source to destination,
+                    or empty LineString if no path is found.
+    """
+    weight_property = "traversal_time"  # Graph's edge attribute for weight
+
+    open_set = []  # (f_score, counter, node)
+    came_from = {}
+    g_score = {source_node: 0}
+    f_score = {node: float("inf") for node in graph.nodes()}
+    f_score[source_node] = alt_heuristic(
+        source_node, destination_node, graph, landmarks
+    )
+    counter = 0
+    heappush(open_set, (f_score[source_node], counter, source_node))
+
+    while open_set:
+        f, _, current = heappop(open_set)
+        if f > f_score[current]:
+            continue
+
+        if current == destination_node:
+            path = []
+            temp = current
+            while temp in came_from:
+                path.append(temp)
+                temp = came_from[temp]
+            path.append(source_node)
+            path.reverse()
+            return LineString(path)
+
+        for neighbor in graph.neighbors(current):
+            weight = graph[current][neighbor][0].get(weight_property, 1)
+            tentative_g = g_score.get(current, float("inf")) + weight
+
+            if tentative_g < g_score.get(neighbor, float("inf")):
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g
+                f = tentative_g + alt_heuristic(
+                    neighbor, destination_node, graph, landmarks
+                )
+                f_score[neighbor] = f
+                counter += 1
+                heappush(open_set, (f, counter, neighbor))
+
+    return LineString([])
+
+
 def find_nearest_node(graph: nx.MultiDiGraph, point: Point) -> Point:
     """
     Find the nearest node in a graph to a given point.

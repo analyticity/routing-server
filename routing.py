@@ -25,6 +25,48 @@ def straightline_heuristic(a: Point, b: Point) -> float:
     return meters / max_speed
 
 
+def alt_heuristic(a: Point, b: Point, graph: nx.MultiDiGraph, landmarks: list) -> float:
+    """
+    ALT heuristic calculation.
+
+    Args:
+        a (Point): Start point.
+        b (Point): End point.
+        graph: The graph containing precomputed landmark distances.
+        landmarks: List of landmark nodes used in preprocessing.
+
+    Returns:
+        float: Estimated traversal time in seconds.
+    """
+    # Retrieve precomputed distances for a and b
+    a_dists = graph.nodes[a].get("landmark_dist", {})
+    t_dists = graph.nodes[b].get("landmark_dist", {})
+
+    max_heuristic_value = 0.0
+
+    for landmark in landmarks:
+        # Get distances, defaulting to infinity if landmark or direction is missing
+        a_dist_data = a_dists.get(landmark, {})
+        b_dist_data = t_dists.get(landmark, {})
+
+        dist_L_b = b_dist_data.get("to", float("inf"))
+        dist_L_a = a_dist_data.get("to", float("inf"))
+        dist_a_L = a_dist_data.get("from", float("inf"))
+        dist_b_L = b_dist_data.get("from", float("inf"))
+
+        # Calculate potential heuristic values using triangle inequality
+        if dist_L_b != float("inf") and dist_L_a != float("inf"):
+            h1 = dist_L_b - dist_L_a
+            max_heuristic_value = max(max_heuristic_value, h1)
+
+        if dist_a_L != float("inf") and dist_b_L != float("inf"):
+            h2 = dist_a_L - dist_b_L
+            max_heuristic_value = max(max_heuristic_value, h2)
+
+    # Ensure heuristic is non-negative
+    return max(0.0, max_heuristic_value)
+
+
 def astar_route(
     graph: nx.MultiDiGraph, source_node: Point, destination_node: Point
 ) -> LineString:

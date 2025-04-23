@@ -1,5 +1,7 @@
 # graph.py
 
+import math
+import random
 from typing import Tuple
 
 import geopandas as gpd
@@ -7,6 +9,147 @@ import networkx as nx
 from shapely.geometry import LineString, MultiLineString, Point
 
 from osm import osm_data_for_area
+
+
+def preprocess_alt(
+    graph: nx.MultiDiGraph, num_landmarks: int = 8, weight: str = "traversal_time"
+) -> list:
+    """
+    Performs ALT preprocessing by selecting landmarks and calculating distances, saving them in the graph.
+
+    Args:
+        graph: The nx.MultiDiGraph to preprocess.
+        num_landmarks: How many landmarks to select. Defaults to 8, an optimal number for a medium-sized city.
+        weight: The edge attribute representing cost. Defaults to 'traversal_time'.
+
+    Returns:
+        A list of the selected landmark nodes.
+    """
+    all_nodes = list(graph.nodes())
+    if not all_nodes:
+        print("Graph has no nodes, skipping ALT preprocessing")
+        return []
+    if len(all_nodes) <= num_landmarks:
+        print(
+            f"Graph has fewer nodes ({len(all_nodes)}) than requested landmarks ({num_landmarks}). Using all nodes as landmarks"
+        )
+        landmark_nodes = list(all_nodes)
+    else:
+        # Determine bounding box of the graph
+        min_x = min(n.x for n in all_nodes)
+        max_x = max(n.x for n in all_nodes)
+        min_y = min(n.y for n in all_nodes)
+        max_y = max(n.y for n in all_nodes)
+
+        width = max_x - min_x
+        height = max_y - min_y
+
+        # Determine grid dimensions aiming for roughly square cells
+        num_cols = max(
+            1,
+            (
+                math.ceil(math.sqrt(num_landmarks * width / height))
+                if height > 0
+                else num_landmarks
+            ),
+        )
+        num_rows = max(1, math.ceil(num_landmarks / num_cols))
+        # Ensure there is enough cells, adjust if calculation is too low due to aspect ratio
+        while num_rows * num_cols < num_landmarks:
+            num_rows += 1
+
+        cell_width = width / num_cols
+        cell_height = height / num_rows
+
+        # Assign nodes to regions
+        nodes_in_region = {}  # (row, col): list of nodes
+        for node in all_nodes:
+            # Calculate column index, clamping to [0, num_cols-1]
+            col = (
+                min(num_cols - 1, math.floor((node.x - min_x) / cell_width))
+                if cell_width > 0
+                else 0
+            )
+            # Calculate row index, clamping to [0, num_rows-1]
+            row = (
+                min(num_rows - 1, math.floor((node.y - min_y) / cell_height))
+                if cell_height > 0
+                else 0
+            )
+            # Ensure non-negative indices
+            col = max(0, col)
+            row = max(0, row)
+
+            region_key = (row, col)
+            if region_key not in nodes_in_region:
+                nodes_in_region[region_key] = []
+            nodes_in_region[region_key].append(node)
+
+        # Select landmarks
+        selected_landmarks_set = set()
+        # Get list of regions that contain nodes
+        available_regions = [
+            (r, c) for (r, c), nodes in nodes_in_region.items() if nodes
+        ]
+        random.shuffle(available_regions)  # Shuffle order for region processing
+
+        # Pick one landmark from distinct available regions (up to num_landmarks)
+        for r, c in available_regions:
+            if len(selected_landmarks_set) >= num_landmarks:
+                break
+            # Select a random node from this region's list
+            candidates = nodes_in_region[(r, c)]
+            chosen_node = random.choice(candidates)
+            selected_landmarks_set.add(chosen_node)
+
+        print(f"Selected {len(selected_landmarks_set)} distinct landmarks")
+
+        # If more landmarks needed, pick random nodes from the remaining pool
+        if len(selected_landmarks_set) < num_landmarks:
+            # Create a pool of all nodes not yet selected
+            remaining_nodes_pool = [
+                node for node in all_nodes if node not in selected_landmarks_set
+            ]
+            random.shuffle(remaining_nodes_pool)
+
+            needed = num_landmarks - len(selected_landmarks_set)
+            # Add needed number of landmarks from the shuffled remaining pool
+            selected_landmarks_set.update(remaining_nodes_pool[:needed])
+
+        landmark_nodes = list(selected_landmarks_set)
+
+    print(f"Backfill selected {len(landmark_nodes)} landmarks")
+
+    # Initialize storage on nodes
+    for node in all_nodes:
+        graph.nodes[node]["landmark_dist"] = {}
+
+    # Calculate distances for each landmark
+    # Pre-create a reversed graph for efficiency
+    reversed_graph = graph.reverse(copy=False)
+
+    for i, landmark in enumerate(landmark_nodes):
+        print(f"Calculating distances for landmark {i + 1}/{len(landmark_nodes)}")
+
+        # Distances from landmark
+        dist_from_L = nx.single_source_dijkstra_path_length(
+            graph, landmark, weight=weight
+        )
+        for node, dist in dist_from_L.items():
+            if landmark not in graph.nodes[node]["landmark_dist"]:
+                graph.nodes[node]["landmark_dist"][landmark] = {}  # Ensure dict exists
+            graph.nodes[node]["landmark_dist"][landmark]["to"] = dist
+
+        # Distances to landmark using reversed graph
+        dist_to_L = nx.single_source_dijkstra_path_length(
+            reversed_graph, landmark, weight=weight
+        )
+        for node, dist in dist_to_L.items():
+            if landmark not in graph.nodes[node]["landmark_dist"]:
+                graph.nodes[node]["landmark_dist"][landmark] = {}  # Ensure dict exists
+            graph.nodes[node]["landmark_dist"][landmark]["from"] = dist
+
+    return landmark_nodes
 
 
 def find_projected_point(graph: nx.MultiDiGraph, point: Point) -> Tuple[Point, dict]:

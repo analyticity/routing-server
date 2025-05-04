@@ -10,3 +10,4 @@ class RoutingCoordRequestBody(BaseModel):
     dst_coord: Union[Tuple[float, float], None]
     from_time: str | None
     to_time: str | None
+    use_traffic: bool | None

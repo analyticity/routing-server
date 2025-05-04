@@ -208,11 +208,9 @@ def find_route(
     graph: nx.MultiDiGraph,
     source_coord: Point,
     destination_coord: Point,
-    start_date: datetime.date,
-    end_date: datetime.date,
     algorithm: Literal["astar", "alt"] = "astar",
     landmarks: list = None,
-) -> LineString:
+) -> tuple[LineString, list]:
     """
     Find the shortest path between two coordinates in a graph.
 
@@ -220,13 +218,12 @@ def find_route(
         graph (nx.MultiDiGraph): Graph to search in.
         source_coord (Point): Source coordinate.
         destination_coord (Point): Destination coordinate.
-        start_date (datetime.date): Start date for traffic data.
-        end_date (datetime.date): End date for traffic data.
         algorithm (Literal["astar", "alt"], optional): Algorithm to use for routing, A* or ALT.
         landmarks (list, optional): List of landmark nodes for ALT heuristic.
 
     Returns:
-        list: List of nodes in the path from source to destination.
+        LineString: LineString representing the path from source to destination.
+        list: List of street names along the path.        
     """
     if algorithm == "astar":
         # Use projected point for source and destination, splitting the edges
@@ -266,5 +263,19 @@ def find_route(
         raise ValueError("Invalid algorithm specified. Use 'astar' or 'alt'.")        
 
     path = LineString(list(path.coords))
-
-    return path
+    streets = []
+    
+    # Calculate traversal time of the path
+    total_length = 0.0
+    total_traversal_time = 0.0
+    for i in range(len(path.coords) - 1):
+        start = Point(path.coords[i])
+        end = Point(path.coords[i + 1])
+        edge_data = graph.get_edge_data(start, end, key=0)
+        if edge_data:
+            segment_length = edge_data.get('length', 0.0)
+            segment_time = edge_data.get('traversal_time', 0.0)
+        total_length += segment_length
+        total_traversal_time += segment_time
+    
+    return path, streets

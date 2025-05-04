@@ -50,26 +50,38 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
     destination_coord = Point((body.dst_coord))
     start_date = datetime.strptime(body.from_time, "%Y-%m-%d").date()
     end_date = datetime.strptime(body.to_time, "%Y-%m-%d").date()
+use_traffic = bool(body.use_traffic)
 
     print(f"Source: {source_coord}")
     print(f"Destination: {destination_coord}")
     print(f"From: {start_date}")
     print(f"To: {end_date}")
+print(f"Use traffic: {use_traffic}")
 
     # Convert coordinates from CRS EPSG:4326 to CRS EPSG:32633
     source = gpd.GeoSeries([source_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
     destination = (
         gpd.GeoSeries([destination_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
     )
+landmarks = None
 
-    route = find_route(graph=graph, source_coord=source, destination_coord=destination, algorithm="alt", landmarks=landmarks)
+if use_traffic:
+    route, streets = find_route(graph=graph, source_coord=source, destination_coord=destination, algorithm="alt", landmarks=landmarks)
+else:
+        route, streets = find_route(graph=unmodified_graph, source_coord=source, destination_coord=destination, algorithm="alt", landmarks=landmarks)
 
     if route:
         # Convert route back to WGS84 for output
         route = gpd.GeoSeries([route], crs="EPSG:32633").to_crs("EPSG:4326")[0]
+        path = [ [coord[1],coord[0]] for coord in route.coords ]
+        streets_coord = {
+            "street_name": "",
+            "path": path,
+            "color": "blue"
+        }
         return {
-            "streets_coord": [],
-            "route": list(route.coords),
+            "streets_coord": [streets_coord],
+            "route": [],
             "src_street": "",
             "dst_street": "",
         }

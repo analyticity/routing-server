@@ -175,7 +175,7 @@ def update_graph_with_traffic(
             original_time = edge_data.get("traversal_time")
             base_time = original_time
 
-            if jam_rows:
+            if not jam_rows.empty:
                 if "delay" in jam_rows.columns:
                     # Sum positive delays (handle NaNs, filter non-positives)
                     valid_delays = jam_rows["delay"].dropna()
@@ -248,6 +248,7 @@ def load_traffic_data(path: str) -> gpd.GeoDataFrame:
         "delay",
         "speed",
         "geometry",
+        "length"
     ]
 
     for col in traffic_data.columns:

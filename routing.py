@@ -34,35 +34,35 @@ def alt_heuristic(a: Point, b: Point, graph: nx.MultiDiGraph, landmarks: list) -
     Args:
         a (Point): Start point.
         b (Point): End point.
-        graph: The graph containing precomputed landmark distances.
+        graph: The graph containing precomputed landmark traversal times.
         landmarks: List of landmark nodes used in preprocessing.
 
     Returns:
         float: Estimated traversal time in seconds.
     """
-    # Retrieve precomputed distances for a and b
-    a_dists = graph.nodes[a].get("landmark_dist", {})
-    t_dists = graph.nodes[b].get("landmark_dist", {})
+    # Retrieve precomputed traversal times for a and b
+    a_traversal_times = graph.nodes[a].get("landmark_traversal_time", {})
+    b_traversal_times = graph.nodes[b].get("landmark_traversal_time", {})
 
     max_heuristic_value = 0.0
 
     for landmark in landmarks:
-        # Get distances, defaulting to infinity if landmark or direction is missing
-        a_dist_data = a_dists.get(landmark, {})
-        b_dist_data = t_dists.get(landmark, {})
+        # Get traversal times, defaulting to infinity if landmark or direction is missing
+        a_traversal_time_data = a_traversal_times.get(landmark, {})
+        b_traversal_time_data = b_traversal_times.get(landmark, {})
 
-        dist_L_b = b_dist_data.get("to", float("inf"))
-        dist_L_a = a_dist_data.get("to", float("inf"))
-        dist_a_L = a_dist_data.get("from", float("inf"))
-        dist_b_L = b_dist_data.get("from", float("inf"))
+        traversal_time_L_b = b_traversal_time_data.get("to", float("inf"))
+        traversal_time_L_a = a_traversal_time_data.get("to", float("inf"))
+        traversal_time_a_L = a_traversal_time_data.get("from", float("inf"))
+        traversal_time_b_L = b_traversal_time_data.get("from", float("inf"))
 
         # Calculate potential heuristic values using triangle inequality
-        if dist_L_b != float("inf") and dist_L_a != float("inf"):
-            h1 = dist_L_b - dist_L_a
+        if traversal_time_L_b != float("inf") and traversal_time_L_a != float("inf"):
+            h1 = traversal_time_L_b - traversal_time_L_a
             max_heuristic_value = max(max_heuristic_value, h1)
 
-        if dist_a_L != float("inf") and dist_b_L != float("inf"):
-            h2 = dist_a_L - dist_b_L
+        if traversal_time_a_L != float("inf") and traversal_time_b_L != float("inf"):
+            h2 = traversal_time_a_L - traversal_time_b_L
             max_heuristic_value = max(max_heuristic_value, h2)
 
     # Ensure heuristic is non-negative
@@ -210,7 +210,7 @@ def find_route(
     destination_coord: Point,
     algorithm: Literal["astar", "alt"] = "astar",
     landmarks: list = None,
-) -> tuple[LineString, list]:
+) -> tuple[LineString, int, int, list[str]]:
     """
     Find the shortest path between two coordinates in a graph.
 
@@ -223,26 +223,28 @@ def find_route(
 
     Returns:
         LineString: LineString representing the path from source to destination.
-        list: List of street names along the path.        
+        list: List of street names along the path.
     """
     if algorithm == "astar":
         # Use projected point for source and destination, splitting the edges
         source_node, source_edge = find_projected_point(graph, source_coord)
-        destination_node, destination_edge = find_projected_point(graph, destination_coord)
+        destination_node, destination_edge = find_projected_point(
+            graph, destination_coord
+        )
 
         if source_node and destination_node:
             source_node = split_edge_at_point(graph, source_node, source_edge)
             destination_node = split_edge_at_point(
                 graph, destination_node, destination_edge
             )
-    
+
             try:
                 path = astar_route(graph, source_node, destination_node)
             except nx.NetworkXNoPath or nx.NodeNotFound:
                 return []
         else:
             return []
-        
+
     elif algorithm == "alt":
         # If landmarks are not provided, raise an error
         if landmarks is None:
@@ -260,11 +262,11 @@ def find_route(
         else:
             return []
     else:
-        raise ValueError("Invalid algorithm specified. Use 'astar' or 'alt'.")        
+        raise ValueError("Invalid algorithm specified. Use 'astar' or 'alt'.")
 
     path = LineString(list(path.coords))
-    streets = []
-    
+    streets: list[str] = []
+
     # Calculate traversal time of the path
     total_length = 0.0
     total_traversal_time = 0.0
@@ -273,9 +275,13 @@ def find_route(
         end = Point(path.coords[i + 1])
         edge_data = graph.get_edge_data(start, end, key=0)
         if edge_data:
-            segment_length = edge_data.get('length', 0.0)
-            segment_time = edge_data.get('traversal_time', 0.0)
+            segment_length = edge_data.get("length", 0.0)
+            segment_time = edge_data.get("traversal_time", 0.0)
+            street_name = edge_data.get("name")
+            if street_name != "":
+                if not streets or streets[-1] != street_name: # Avoid duplicates
+                    streets.append(street_name)
         total_length += segment_length
         total_traversal_time += segment_time
-    
-    return path, streets
+
+    return path, total_length, total_traversal_time, streets

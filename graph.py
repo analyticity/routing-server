@@ -15,7 +15,7 @@ def preprocess_alt(
     graph: nx.MultiDiGraph, num_landmarks: int = 8, weight: str = "traversal_time"
 ) -> list:
     """
-    Performs ALT preprocessing by selecting landmarks and calculating distances, saving them in the graph.
+    Performs ALT preprocessing by selecting landmarks and calculating traversal times, saving them in the graph.
 
     Args:
         graph: The nx.MultiDiGraph to preprocess.
@@ -122,32 +122,32 @@ def preprocess_alt(
 
     # Initialize storage on nodes
     for node in all_nodes:
-        graph.nodes[node]["landmark_dist"] = {}
+        graph.nodes[node]["landmark_traversal_time"] = {}
 
-    # Calculate distances for each landmark
+    # Calculate traversal times for each landmark
     # Pre-create a reversed graph for efficiency
     reversed_graph = graph.reverse(copy=False)
 
     for i, landmark in enumerate(landmark_nodes):
-        print(f"Calculating distances for landmark {i + 1}/{len(landmark_nodes)}")
+        print(f"Calculating traversal times for landmark {i + 1}/{len(landmark_nodes)}")
 
-        # Distances from landmark
-        dist_from_L = nx.single_source_dijkstra_path_length(
+        # Traversal times from landmark
+        traversal_time_from_L = nx.single_source_dijkstra_path_length(
             graph, landmark, weight=weight
         )
-        for node, dist in dist_from_L.items():
-            if landmark not in graph.nodes[node]["landmark_dist"]:
-                graph.nodes[node]["landmark_dist"][landmark] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_dist"][landmark]["to"] = dist
+        for node, traversal_time in traversal_time_from_L.items():
+            if landmark not in graph.nodes[node]["landmark_traversal_time"]:
+                graph.nodes[node]["landmark_traversal_time"][landmark] = {}  # Ensure dict exists
+            graph.nodes[node]["landmark_traversal_time"][landmark]["to"] = traversal_time
 
-        # Distances to landmark using reversed graph
-        dist_to_L = nx.single_source_dijkstra_path_length(
+        # Traversal times to landmark using reversed graph
+        traversal_time_to_L = nx.single_source_dijkstra_path_length(
             reversed_graph, landmark, weight=weight
         )
-        for node, dist in dist_to_L.items():
-            if landmark not in graph.nodes[node]["landmark_dist"]:
-                graph.nodes[node]["landmark_dist"][landmark] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_dist"][landmark]["from"] = dist
+        for node, traversal_time in traversal_time_to_L.items():
+            if landmark not in graph.nodes[node]["landmark_traversal_time"]:
+                graph.nodes[node]["landmark_traversal_time"][landmark] = {}  # Ensure dict exists
+            graph.nodes[node]["landmark_traversal_time"][landmark]["from"] = traversal_time
 
     return landmark_nodes
 

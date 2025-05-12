@@ -31,7 +31,7 @@ template_graph = deepcopy(unmodified_graph)
 # Store original traversal times for quick restoration
 original_data = {}
 for u, v, key, data in template_graph.edges(data=True, keys=True):
-    original_data[(u, v, key)] = data
+    original_data[(u, v, key)] = data.copy()
 
 landmarks = preprocess_alt(graph=unmodified_graph)
 traffic = load_traffic_data("data/partial_processed_jams.geojson")
@@ -86,9 +86,10 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
             for date in date_range_dates:
                 date_range_overlaps.extend(edge_jam_overlaps_by_date[date])
 
-            # Restore original traversal times
+            # Restore original data
             for (u, v, key), data in original_data.items():
-                template_graph.edges[u, v, key] = data
+                for attr, value in data.items():
+                    template_graph.edges[u, v, key][attr] = value
 
             # Update graph with collected overlaps
             date_range = len(date_range_dates)

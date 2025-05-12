@@ -137,8 +137,12 @@ def preprocess_alt(
         )
         for node, traversal_time in traversal_time_from_L.items():
             if landmark not in graph.nodes[node]["landmark_traversal_time"]:
-                graph.nodes[node]["landmark_traversal_time"][landmark] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_traversal_time"][landmark]["to"] = traversal_time
+                graph.nodes[node]["landmark_traversal_time"][
+                    landmark
+                ] = {}  # Ensure dict exists
+            graph.nodes[node]["landmark_traversal_time"][landmark]["to"] = (
+                traversal_time
+            )
 
         # Traversal times to landmark using reversed graph
         traversal_time_to_L = nx.single_source_dijkstra_path_length(
@@ -146,8 +150,12 @@ def preprocess_alt(
         )
         for node, traversal_time in traversal_time_to_L.items():
             if landmark not in graph.nodes[node]["landmark_traversal_time"]:
-                graph.nodes[node]["landmark_traversal_time"][landmark] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_traversal_time"][landmark]["from"] = traversal_time
+                graph.nodes[node]["landmark_traversal_time"][
+                    landmark
+                ] = {}  # Ensure dict exists
+            graph.nodes[node]["landmark_traversal_time"][landmark]["from"] = (
+                traversal_time
+            )
 
     return landmark_nodes
 
@@ -204,7 +212,7 @@ def split_edge_at_point(
     p = projected_point
     u, v = edge_data["u"], edge_data["v"]
     edge = edge_data["edge"]
-    
+
     # Check if the edge is already split
     if graph.has_node(p):
         return p
@@ -338,12 +346,12 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
 
                 start_node = Point(start_coord)
                 end_node = Point(end_coord)
-                
+
                 length = start_node.distance(end_node)
-                
+
                 traversal_time = (
                     length / speed if speed > 0 else length / speeds.get("unclassified")
-                ) 
+                )
 
                 # Add edges to the graph
                 graph.add_edge(

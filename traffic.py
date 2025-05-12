@@ -31,7 +31,7 @@ def get_edge_jam_overlaps(
 
     Returns:
         List of tuples: [ ((u, v, key), jam_rows_df), ... ], where jam_rows_df
-        is a GeoDataFrame containing data for jams overlapping the edge.\
+        is a GeoDataFrame containing data for jams overlapping the edge.
     """
     # Parameters for overlap filtering, found to work well on OSM data
     tolerance = 10.0
@@ -50,9 +50,9 @@ def get_edge_jam_overlaps(
     # Go over all edges in the graph
     print(f"Go over {graph.number_of_edges()} road edges")
     total = graph.number_of_edges()
-    processed_count = 0  # Debug
-    skipped_invalid_geom = 0  # Debug
-    overlap_found_count = 0  # Debug
+    processed_count = 0
+    skipped_invalid_geom = 0
+    overlap_found_count = 0
 
     for u, v, key, edge in graph.edges(data=True, keys=True):
         processed_count += 1
@@ -82,8 +82,6 @@ def get_edge_jam_overlaps(
 
         # Check intersections and overlaps
         try:
-            intersecting_indices = []  # Initialize as empty list
-
             # Buffer candidate geometries and check validity
             candidate_buffered_geoms = candidate_rows.geometry.buffer(tolerance)
             valid_buffers = candidate_buffered_geoms[
@@ -135,8 +133,9 @@ def get_edge_jam_overlaps(
                 jam_rows = candidate_rows.loc[jam_indices]
                 edge_jam_overlaps.append(((u, v, key), jam_rows))
 
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error processing edge: {e}")
+            continue
 
     end_time = time.time()
 
@@ -247,7 +246,7 @@ def load_traffic_data(path: str) -> gpd.GeoDataFrame:
         "delay",
         "speed",
         "geometry",
-        "length"
+        "length",
     ]
 
     for col in traffic_data.columns:

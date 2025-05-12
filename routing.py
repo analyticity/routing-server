@@ -279,7 +279,7 @@ def find_route(
             segment_time = edge_data.get("traversal_time", 0.0)
             street_name = edge_data.get("name")
             if street_name != "":
-                if not streets or streets[-1] != street_name: # Avoid duplicates
+                if not streets or streets[-1] != street_name:  # Avoid duplicates
                     streets.append(street_name)
         total_length += segment_length
         total_traversal_time += segment_time

@@ -217,7 +217,7 @@ def find_route(
     algorithm: Literal["astar", "alt"] = "astar",
     landmarks: list = None,
     use_traffic: bool = True,
-) -> tuple[LineString, int, int, list]:
+) -> tuple[LineString, int, int, int, list]:
     """
     Find the shortest path between two coordinates in a graph.
 
@@ -230,10 +230,11 @@ def find_route(
         use_traffic (bool, optional): Whether to use traffic-adjusted times for route selection.
 
     Returns:
-        tuple: (LineString, total_length, total_traversal_time, street_segments)
+        tuple: (LineString, total_length, total_traversal_time, total_traversal_time_without_traffic, street_segments)
             - LineString: LineString representing the path from source to destination
             - total_length: Total length of the path in meters
-            - total_traversal_time: Total traversal time in seconds
+            - total_traversal_time: Total traversal time in seconds (with traffic if use_traffic=True)
+            - total_traversal_time_without_traffic: Total traversal time in seconds without traffic
             - street_segments: List containing street segments with coordinates and names and traffic status
     """
     if algorithm == "astar":
@@ -281,6 +282,7 @@ def find_route(
     # Calculate traversal time of the path
     total_length = 0.0
     total_traversal_time = 0.0
+    total_traversal_time_without_traffic = 0.0
     
     for i in range(len(path.coords) - 1):
         start = Point(path.coords[i])
@@ -304,7 +306,8 @@ def find_route(
             })
             
             total_length += segment_length
-            # Always use traffic-adjusted time for final calculation
+            total_traversal_time_without_traffic += original_time
+            # Use traffic-adjusted time for final calculation
             total_traversal_time += traffic_time
 
-    return path, total_length, total_traversal_time, street_segments
+    return path, total_length, total_traversal_time, total_traversal_time_without_traffic, street_segments

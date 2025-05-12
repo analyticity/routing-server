@@ -64,7 +64,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
         end_date=end_date,
     )     
 
-    route, length, time, streets = find_route(
+    route, length, time_with_traffic, time_without_traffic, streets = find_route(
         graph=graph,
         source_coord=source,
         destination_coord=destination,
@@ -112,7 +112,8 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
             "src_street": src_street,
             "dst_street": dst_street,
             "length": length,
-            "time": time,
+            "time_with_traffic": time_with_traffic,
+            "time_without_traffic": time_without_traffic,
         }
     else:
         # No route found

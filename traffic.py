@@ -164,8 +164,11 @@ def update_graph_with_traffic(
     date_range: int,
 ) -> nx.MultiDiGraph:
     """
-    Updates graph edge weights (traversal_time) based on average historical delay
-    using provided overlapping traffic jam row data.
+    Updates graph edge weights based on traffic events and their severity.
+    Severity levels:
+    0: No traffic issues (fine)
+    1: Moderate traffic
+    2: Congested traffic
 
     Args:
         graph: The NetworkX MultiDiGraph to modify.
@@ -173,7 +176,7 @@ def update_graph_with_traffic(
         date_range: The number of unique dates spanned by the traffic data period.
 
     Returns:
-        The graph with updated traversal_time attributes.
+        The graph with updated traffic attributes.
     """
     print(f"Applying {len(edge_jam_overlaps)} traffic segments to road graph")
 
@@ -181,27 +184,58 @@ def update_graph_with_traffic(
         try:
             # Access the specific edge's data using u, v, and the key
             edge_data = graph.edges[u, v, key]
-            original_time = edge_data.get("traversal_time")
-            base_time = original_time
-            total_delay = 0.0
+            
+            edge_length = edge_data.get("length") # Meters
+            base_time = edge_data.get("traversal_time") # Seconds
+            base_speed = edge_data.get("length") / base_time if base_time > 0 else 8.333 # Default speed of 30 km/h
+            seconds_in_range = date_range * 86400 # Total time window in seconds
+ 
+            # Count traffic events and calculate severity
+            num_events = len(jam_rows)
+            if num_events < date_range*3:
+                severity = 0
+            elif num_events < date_range*7:
+                severity = 1
+            elif num_events >= date_range*7:
+                severity = 2
+                
+            # Total delay time across all jam events (in seconds)
+            total_weighted_delay = 0.0
+            total_jam_duration = 0.0
+            
+            for _, jam in jam_rows.iterrows():
+                jam_length = jam["length"]
+                jam_delay = jam["delay"]
+                jam_duration = jam["duration"]
 
-            if not jam_rows.empty:
-                if "delay" in jam_rows.columns:
-                    # Sum delays
-                    valid_delays = jam_rows["delay"].dropna()
-                    positive_delays = valid_delays[valid_delays > 0]
-                    if not positive_delays.empty:
-                        total_delay = positive_delays.sum()
+                if jam_length <= 0 or jam_duration <= 0:
+                    continue
 
-            if total_delay > 0:
-                average_daily_delay = total_delay / date_range
-                new_traversal_time = base_time + average_daily_delay
-                edge_data["traversal_time"] = new_traversal_time
-                edge_data["is_penalized_by_traffic"] = True
-                edge_data["avg_daily_delay_added"] = average_daily_delay
+                if jam_delay == -1:
+                    # Standstill: assume 1 km/h (0.278 m/s)
+                    standstill_speed = 0.278
+                    standstill_time = edge_length / standstill_speed
+                    segment_scaled_delay = standstill_time - base_time
+                elif jam_delay > 0:
+                    segment_scaled_delay = (jam_delay / jam_length) * edge_length
+                else:
+                    continue                    
+
+                total_weighted_delay += segment_scaled_delay * jam_duration
+                total_jam_duration += jam_duration
+            
+            if total_jam_duration > 0:
+                jam_fraction = min(total_jam_duration / seconds_in_range, 1.0)
+                avg_delay_when_jammed = total_weighted_delay / total_jam_duration
+                adjusted_time = (1 - jam_fraction) * base_time + jam_fraction * (base_time + avg_delay_when_jammed)
             else:
-                edge_data["is_penalized_by_traffic"] = False
-                edge_data["avg_daily_delay_added"] = 0.0
+                adjusted_time = base_time
+                
+            # Update edge data
+            edge_data["is_penalized_by_traffic"] = severity > 0
+            edge_data["traffic_severity"] = severity
+            edge_data["num_traffic_events"] = num_events
+            edge_data["traversal_time_with_traffic"] = adjusted_time
 
         except Exception as e:
             print(f"Error updating edge ({u}, {v}, k={key}): {e}")

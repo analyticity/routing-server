@@ -15,7 +15,7 @@ JamOverlapResult = list[tuple[EdgeKeyTuple, gpd.GeoDataFrame]]
 def get_edge_jam_overlaps(
     graph: nx.MultiDiGraph,
     traffic: gpd.GeoDataFrame,
-) -> JamOverlapResult:
+) -> dict:
     """
     Filters graph edges overlapped by traffic jams and returns edge info
     paired with the overlapping jam data.
@@ -30,7 +30,7 @@ def get_edge_jam_overlaps(
         traffic: GeoDataFrame of traffic jams (LineStrings), indexed appropriately.
 
     Returns:
-        List of tuples: [ ((u, v, key), jam_rows_df), ... ], where jam_rows_df
+        Dict of tuples: { date: ((u, v, key), jam_rows_df), ... }, where jam_rows_df
         is a GeoDataFrame containing data for jams overlapping the edge.
     """
     # Parameters for overlap filtering, found to work well on OSM data
@@ -56,9 +56,9 @@ def get_edge_jam_overlaps(
 
     for u, v, key, edge in graph.edges(data=True, keys=True):
         processed_count += 1
-        if processed_count % 100 == 0:
+        if processed_count % 1000 == 0:
             print(
-                f"Processed {processed_count} edges out of {total} = {processed_count / total:.2%}"
+                f"\tProcessed {processed_count} edges out of {total} = {processed_count / total:.2%}"
             )
 
         linestring = edge["geometry"]
@@ -145,7 +145,17 @@ def get_edge_jam_overlaps(
     print(f"Found {overlap_found_count} edges with significant overlap")
     print(f"Total filtering time {end_time - start_time:.2f} seconds")
 
-    return edge_jam_overlaps
+    edge_jam_overlaps_by_date = {}
+    for (u, v, key), jam_rows in edge_jam_overlaps:
+        for date in jam_rows["date"].unique():
+            if date not in edge_jam_overlaps_by_date:
+                edge_jam_overlaps_by_date[date] = []
+            # Filter jam rows for this date
+            date_jam_rows = jam_rows[jam_rows["date"] == date]
+            if not date_jam_rows.empty:
+                edge_jam_overlaps_by_date[date].append(((u, v, key), date_jam_rows))
+
+    return edge_jam_overlaps_by_date
 
 
 def update_graph_with_traffic(

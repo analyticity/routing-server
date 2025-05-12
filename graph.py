@@ -2,6 +2,8 @@
 
 import math
 import random
+from copy import deepcopy
+from datetime import date, datetime
 from typing import Tuple
 
 import geopandas as gpd
@@ -9,6 +11,55 @@ import networkx as nx
 from shapely.geometry import LineString, MultiLineString, Point
 
 from osm import osm_data_for_area
+from traffic import update_graph_with_traffic
+
+
+def create_graph_cache():
+    """
+    Creates a cache for traffic graphs to avoid recomputing them multiple times.
+
+    Returns:
+        dict: A dictionary to cache traffic graphs, where keys are tuples of start and end dates.
+    """
+    traffic_graph_cache: dict[tuple[datetime, datetime], nx.MultiDiGraph] = {}
+    return traffic_graph_cache
+
+def get_graph_with_traffic_cached(
+    base_graph: nx.MultiDiGraph,
+    cache: dict[tuple[date, date], nx.MultiDiGraph],
+    edge_jam_overlaps: dict,
+    start_date: date,
+    end_date: date,
+) -> nx.MultiDiGraph:
+    """
+    Retrieves a cached graph with traffic data for the specified date range.
+
+    Args:
+        base_graph (nx.MultiDiGraph): The base graph to be modified.
+        cache (dict[tuple[date, date], nx.MultiDiGraph]): Cache for storing traffic graphs.
+        edge_jam_overlaps (dict): Dictionary of edge-jam overlaps.
+        start_date (date): Start date of the traffic data.
+        end_date (date): End date of the traffic data.
+
+    Returns:
+        nx.MultiDiGraph: The graph with traffic data applied for the specified date range.
+    """
+    key = (start_date, end_date)
+    if key in cache:
+        return cache[key]
+
+    graph_copy = deepcopy(base_graph)
+    # Get edge-jam overlaps for the specified date range
+    available_dates = sorted(edge_jam_overlaps.keys())
+    date_range_dates = [d for d in available_dates if start_date <= d <= end_date]
+    if date_range_dates:
+        date_range_overlaps = []
+        for date in date_range_dates:
+            date_range_overlaps.extend(edge_jam_overlaps[date])
+    num_days = (end_date - start_date).days + 1
+    graph_copy = update_graph_with_traffic(graph_copy, date_range_overlaps, num_days)
+    cache[key] = graph_copy
+    return graph_copy
 
 
 def preprocess_alt(
@@ -102,7 +153,7 @@ def preprocess_alt(
             chosen_node = random.choice(candidates)
             selected_landmarks_set.add(chosen_node)
 
-        print(f"Selected {len(selected_landmarks_set)} distinct landmarks")
+        print(f"Selected {len(selected_landmarks_set)} landmarks")
 
         # If more landmarks needed, pick random nodes from the remaining pool
         if len(selected_landmarks_set) < num_landmarks:
@@ -118,8 +169,6 @@ def preprocess_alt(
 
         landmark_nodes = list(selected_landmarks_set)
 
-    print(f"Backfill selected {len(landmark_nodes)} landmarks")
-
     # Initialize storage on nodes
     for node in all_nodes:
         graph.nodes[node]["landmark_traversal_time"] = {}
@@ -129,7 +178,9 @@ def preprocess_alt(
     reversed_graph = graph.reverse(copy=False)
 
     for i, landmark in enumerate(landmark_nodes):
-        print(f"Calculating traversal times for landmark {i + 1}/{len(landmark_nodes)}")
+        print(
+            f"\tCalculating traversal times for landmark {i + 1}/{len(landmark_nodes)} = {100 * (i + 1) / len(landmark_nodes):.2f}%"
+        )
 
         # Traversal times from landmark
         traversal_time_from_L = nx.single_source_dijkstra_path_length(
@@ -140,9 +191,9 @@ def preprocess_alt(
                 graph.nodes[node]["landmark_traversal_time"][
                     landmark
                 ] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_traversal_time"][landmark]["to"] = (
-                traversal_time
-            )
+            graph.nodes[node]["landmark_traversal_time"][landmark][
+                "to"
+            ] = traversal_time
 
         # Traversal times to landmark using reversed graph
         traversal_time_to_L = nx.single_source_dijkstra_path_length(
@@ -153,9 +204,9 @@ def preprocess_alt(
                 graph.nodes[node]["landmark_traversal_time"][
                     landmark
                 ] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_traversal_time"][landmark]["from"] = (
-                traversal_time
-            )
+            graph.nodes[node]["landmark_traversal_time"][landmark][
+                "from"
+            ] = traversal_time
 
     return landmark_nodes
 

@@ -210,7 +210,7 @@ def find_route(
     destination_coord: Point,
     algorithm: Literal["astar", "alt"] = "astar",
     landmarks: list = None,
-) -> tuple[LineString, int, int, list[str]]:
+) -> tuple[LineString, int, int, list]:
     """
     Find the shortest path between two coordinates in a graph.
 
@@ -222,8 +222,11 @@ def find_route(
         landmarks (list, optional): List of landmark nodes for ALT heuristic.
 
     Returns:
-        LineString: LineString representing the path from source to destination.
-        list: List of street names along the path.
+        tuple: (LineString, total_length, total_traversal_time, street_segments)
+            - LineString: LineString representing the path from source to destination
+            - total_length: Total length of the path in meters
+            - total_traversal_time: Total traversal time in seconds
+            - street_segments: List containing street segments with coordinates and names and traffic status
     """
     if algorithm == "astar":
         # Use projected point for source and destination, splitting the edges
@@ -265,11 +268,12 @@ def find_route(
         raise ValueError("Invalid algorithm specified. Use 'astar' or 'alt'.")
 
     path = LineString(list(path.coords))
-    streets: list[str] = []
+    street_segments = []
 
     # Calculate traversal time of the path
     total_length = 0.0
     total_traversal_time = 0.0
+    
     for i in range(len(path.coords) - 1):
         start = Point(path.coords[i])
         end = Point(path.coords[i + 1])
@@ -277,11 +281,16 @@ def find_route(
         if edge_data:
             segment_length = edge_data.get("length", 0.0)
             segment_time = edge_data.get("traversal_time", 0.0)
-            street_name = edge_data.get("name")
-            if street_name != "":
-                if not streets or streets[-1] != street_name:  # Avoid duplicates
-                    streets.append(street_name)
-        total_length += segment_length
-        total_traversal_time += segment_time
+            street_name = edge_data.get("name", "")
+            
+            # Add segment to dictionary
+            street_segments.append({
+                "street_name": street_name,
+                "path": [path.coords[i], path.coords[i + 1]],
+                "severity": "2" if edge_data.get("is_penalized_by_traffic", False) else "0",
+            })
+            
+            total_length += segment_length
+            total_traversal_time += segment_time
 
-    return path, total_length, total_traversal_time, streets
+    return path, total_length, total_traversal_time, street_segments

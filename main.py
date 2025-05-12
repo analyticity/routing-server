@@ -5,7 +5,7 @@ from datetime import datetime
 import geopandas as gpd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from shapely import Point
+from shapely import LineString, Point
 
 from graph import create_graph_from_base, get_routing_base, preprocess_alt
 from models import RoutingCoordRequestBody
@@ -114,13 +114,29 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
     if route:
         # Convert route back to WGS84 for output
         route = gpd.GeoSeries([route], crs="EPSG:32633").to_crs("EPSG:4326")[0]
-        path = [[coord[1], coord[0]] for coord in route.coords]
-        streets_coord = {"street_name": "", "path": path, "color": "blue"}
+        path = [[coord[1], coord[0]] for coord in route.coords]        
+
+        # Convert each street segment to WGS84
+        for segment in streets:
+            linestring = LineString(segment["path"])
+            linestring = gpd.GeoSeries([linestring], crs="EPSG:32633").to_crs("EPSG:4326")[0]
+            segment["path"] = [[coord[1], coord[0]] for coord in linestring.coords]
+            if segment["severity"] == 0:
+                segment["color"] = "green"
+            elif segment["severity"] == 1:
+                segment["color"] = "orange"
+            elif segment["severity"] == 2:
+                segment["color"] = "red"
+            else:
+                segment["color"] = "green"
+        
         return {
-            "streets_coord": [streets_coord],
-            "route": [],
-            "src_street": "",
-            "dst_street": "",
+            "streets_coord": streets,
+            "route": path,
+            "src_street": streets[0].get("street_name", ""),
+            "dst_street": streets[-1].get("street_name", ""),
+            "length": length,
+            "time": time,
         }
     else:
         # No route found

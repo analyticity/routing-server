@@ -414,6 +414,7 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
                     highway=highway,
                     length=length,
                     traversal_time=traversal_time,
+                    traversal_time_with_traffic=traversal_time,
                     oneway=oneway,
                     is_blocked=is_blocked,
                 )
@@ -428,6 +429,7 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
                         highway=highway,
                         length=length,
                         traversal_time=traversal_time,
+                        traversal_time_with_traffic=traversal_time,
                         oneway=oneway,
                         is_blocked=is_blocked,
                     )

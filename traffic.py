@@ -174,26 +174,25 @@ def update_graph_with_traffic(
             edge_data = graph.edges[u, v, key]
             original_time = edge_data.get("traversal_time")
             base_time = original_time
+            total_delay = 0.0
 
             if not jam_rows.empty:
                 if "delay" in jam_rows.columns:
-                    # Sum positive delays (handle NaNs, filter non-positives)
+                    # Sum delays
                     valid_delays = jam_rows["delay"].dropna()
                     positive_delays = valid_delays[valid_delays > 0]
                     if not positive_delays.empty:
-                        total_positive_delay = positive_delays.sum()
+                        total_delay = positive_delays.sum()
 
-                if total_positive_delay > 0:
-                    average_daily_delay = total_positive_delay / date_range
-
-            new_traversal_time = base_time + average_daily_delay
-            edge_data["traversal_time"] = new_traversal_time
-            edge_data["is_penalized_by_traffic"] = (
-                average_daily_delay > 1e-9
-            )  # Flag if delay was actually added
-            edge_data["avg_daily_delay_added"] = (
-                average_daily_delay  # Store calculated delay for info
-            )
+            if total_delay > 0:
+                average_daily_delay = total_delay / date_range
+                new_traversal_time = base_time + average_daily_delay
+                edge_data["traversal_time"] = new_traversal_time
+                edge_data["is_penalized_by_traffic"] = True
+                edge_data["avg_daily_delay_added"] = average_daily_delay
+            else:
+                edge_data["is_penalized_by_traffic"] = False
+                edge_data["avg_daily_delay_added"] = 0.0
 
         except Exception as e:
             print(f"Error updating edge ({u}, {v}, k={key}): {e}")

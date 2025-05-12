@@ -70,7 +70,7 @@ def alt_heuristic(a: Point, b: Point, graph: nx.MultiDiGraph, landmarks: list) -
 
 
 def astar_route(
-    graph: nx.MultiDiGraph, source_node: Point, destination_node: Point
+    graph: nx.MultiDiGraph, source_node: Point, destination_node: Point, use_traffic: bool = True
 ) -> LineString:
     """
     Find the shortest path between two nodes in a graph using A* algorithm.
@@ -84,7 +84,10 @@ def astar_route(
         LineString: LineString representing the path from source to destination,
                     or empty LineString if no path is found.
     """
-    weight_property = "traversal_time"  # Graph's edge attribute for weight
+    if use_traffic:
+        weight_property = "traversal_time_with_traffic"
+    else:
+        weight_property = "traversal_time"
 
     open_set = []  # (f_score, counter, node)
     came_from = {}
@@ -126,7 +129,7 @@ def astar_route(
 
 
 def alt_route(
-    graph: nx.MultiDiGraph, landmarks: list, source_node: Point, destination_node: Point
+    graph: nx.MultiDiGraph, landmarks: list, source_node: Point, destination_node: Point, use_traffic: bool = True
 ) -> LineString:
     """
     Find the shortest path between two nodes using A* with ALT heuristic.
@@ -141,7 +144,10 @@ def alt_route(
         LineString: LineString representing the path from source to destination,
                     or empty LineString if no path is found.
     """
-    weight_property = "traversal_time"  # Graph's edge attribute for weight
+    if use_traffic:
+        weight_property = "traversal_time_with_traffic"
+    else:
+        weight_property = "traversal_time"
 
     open_set = []  # (f_score, counter, node)
     came_from = {}
@@ -210,6 +216,7 @@ def find_route(
     destination_coord: Point,
     algorithm: Literal["astar", "alt"] = "astar",
     landmarks: list = None,
+    use_traffic: bool = True,
 ) -> tuple[LineString, int, int, list]:
     """
     Find the shortest path between two coordinates in a graph.
@@ -220,6 +227,7 @@ def find_route(
         destination_coord (Point): Destination coordinate.
         algorithm (Literal["astar", "alt"], optional): Algorithm to use for routing, A* or ALT.
         landmarks (list, optional): List of landmark nodes for ALT heuristic.
+        use_traffic (bool, optional): Whether to use traffic-adjusted times for route selection.
 
     Returns:
         tuple: (LineString, total_length, total_traversal_time, street_segments)
@@ -242,7 +250,7 @@ def find_route(
             )
 
             try:
-                path = astar_route(graph, source_node, destination_node)
+                path = astar_route(graph, source_node, destination_node, use_traffic)
             except nx.NetworkXNoPath or nx.NodeNotFound:
                 return []
         else:
@@ -259,7 +267,7 @@ def find_route(
 
         if source_node and destination_node:
             try:
-                path = alt_route(graph, landmarks, source_node, destination_node)
+                path = alt_route(graph, landmarks, source_node, destination_node, use_traffic)
             except nx.NetworkXNoPath or nx.NodeNotFound:
                 return []
         else:
@@ -280,17 +288,23 @@ def find_route(
         edge_data = graph.get_edge_data(start, end, key=0)
         if edge_data:
             segment_length = edge_data.get("length", 0.0)
-            segment_time = edge_data.get("traversal_time", 0.0)
+            # Get both original and traffic-adjusted times
+            original_time = edge_data.get("traversal_time", 0.0)
+            traffic_time = edge_data.get("traversal_time_with_traffic", original_time)
             street_name = edge_data.get("name", "")
+            
+            # Get traffic severity (0-2)
+            severity = str(edge_data.get("traffic_severity", 0))
             
             # Add segment to dictionary
             street_segments.append({
                 "street_name": street_name,
                 "path": [path.coords[i], path.coords[i + 1]],
-                "severity": "2" if edge_data.get("is_penalized_by_traffic", False) else "0",
+                "severity": severity,
             })
             
             total_length += segment_length
-            total_traversal_time += segment_time
+            # Always use traffic-adjusted time for final calculation
+            total_traversal_time += traffic_time
 
     return path, total_length, total_traversal_time, street_segments

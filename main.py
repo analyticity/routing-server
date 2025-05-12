@@ -70,6 +70,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
         destination_coord=destination,
         algorithm="alt",
         landmarks=landmarks,
+        use_traffic=use_traffic,
     )
 
     if route:
@@ -82,14 +83,17 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
             linestring = LineString(segment["path"])
             linestring = gpd.GeoSeries([linestring], crs="EPSG:32633").to_crs("EPSG:4326")[0]
             segment["path"] = [[coord[1], coord[0]] for coord in linestring.coords]
-            if segment["severity"] == "0":
-                segment["color"] = "green"
-            elif segment["severity"] == "1":
-                segment["color"] = "orange"
-            elif segment["severity"] == "2":
-                segment["color"] = "red"
+            
+            # Map severity to colors
+            severity = segment["severity"]
+            if severity == "0":
+                segment["color"] = "green"  # No traffic issues
+            elif severity == "1":
+                segment["color"] = "orange"  # Moderate traffic
+            elif severity == "2":
+                segment["color"] = "red"  # Congested traffic
             else:
-                segment["color"] = "green"
+                segment["color"] = "green"  # Default to green for unknown severity
         
         # Find the first street and last street names
         src_street, dst_street = "", ""

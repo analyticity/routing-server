@@ -48,18 +48,23 @@ def get_graph_with_traffic_cached(
     if key in cache:
         return cache[key]
 
-    graph_copy = deepcopy(base_graph)
     # Get edge-jam overlaps for the specified date range
     available_dates = sorted(edge_jam_overlaps.keys())
     date_range_dates = [d for d in available_dates if start_date <= d <= end_date]
+    date_range_overlaps = []
     if date_range_dates:
-        date_range_overlaps = []
         for date in date_range_dates:
             date_range_overlaps.extend(edge_jam_overlaps[date])
-    num_days = (end_date - start_date).days + 1
-    graph_copy = update_graph_with_traffic(graph_copy, date_range_overlaps, num_days)
-    cache[key] = graph_copy
-    return graph_copy
+    num_days = len(date_range_dates)
+    print(f"Number of days with traffic in range: {num_days}")
+    if num_days > 0:
+        graph_copy = deepcopy(base_graph)
+        graph_copy = update_graph_with_traffic(graph_copy, date_range_overlaps, num_days)
+        cache[key] = graph_copy
+        return graph_copy
+    else:
+        cache[key] = base_graph
+        return base_graph
 
 
 def preprocess_alt(
@@ -274,7 +279,6 @@ def split_edge_at_point(
     highway = edge.get("highway", "unclassified")
     oneway = edge.get("oneway", "no")
     speed = edge.get("speed", 8.33)  # Default 30 km/h
-    is_blocked = edge.get("is_blocked", False)
 
     # Create new segments
     line1 = LineString([u, p])
@@ -296,7 +300,6 @@ def split_edge_at_point(
         length=length1,
         traversal_time=traversal_time1,
         oneway=oneway,
-        is_blocked=is_blocked,
     )
     graph.add_edge(
         p,
@@ -308,7 +311,6 @@ def split_edge_at_point(
         length=length2,
         traversal_time=traversal_time2,
         oneway=oneway,
-        is_blocked=is_blocked,
     )
 
     # Remove original edge
@@ -326,7 +328,6 @@ def split_edge_at_point(
             length=length1,
             traversal_time=traversal_time1,
             oneway=oneway,
-            is_blocked=is_blocked,
         )
         graph.add_edge(
             v,
@@ -338,7 +339,6 @@ def split_edge_at_point(
             length=length2,
             traversal_time=traversal_time2,
             oneway=oneway,
-            is_blocked=is_blocked,
         )
         if graph.has_edge(v, u):
             graph.remove_edge(v, u)
@@ -387,7 +387,6 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
         if oneway != "yes":
             oneway = "no"
         speed = speeds.get(highway, 8.33)  # Default to 30 km/h
-        is_blocked = row.get("is_blocked", False)
 
         if isinstance(geometry, (LineString, MultiLineString)):
             coords = list(geometry.coords)
@@ -416,7 +415,6 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
                     traversal_time=traversal_time,
                     traversal_time_with_traffic=traversal_time,
                     oneway=oneway,
-                    is_blocked=is_blocked,
                 )
                 # Add reverse edge if not one-way
                 if oneway == "no":
@@ -431,7 +429,6 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
                         traversal_time=traversal_time,
                         traversal_time_with_traffic=traversal_time,
                         oneway=oneway,
-                        is_blocked=is_blocked,
                     )
 
     return graph
@@ -448,6 +445,8 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
         gpd.GeoDataFrame: GeoDataFrame containing the routing base data.
     """
     osm_data = osm_data_for_area(area)
+    if not osm_data:
+        raise ValueError(f"No OSM data found for area: {area}")
     routing_base = gpd.GeoDataFrame.from_features(osm_data["features"], crs="OGC:CRS84")
     # Convert to WGS84
     routing_base = routing_base.to_crs("EPSG:32633")

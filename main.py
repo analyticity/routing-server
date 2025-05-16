@@ -56,6 +56,7 @@ traffic_graph_cache = create_graph_cache()
 @app.post("/find_route_by_coord")
 async def find_route_by_coord(body: RoutingCoordRequestBody):
     """Finds the route between two coordinates in the given timeframe."""
+    algorithm = "alt"  # Default to ALT
     source_coord = Point((body.src_coord))
     destination_coord = Point((body.dst_coord))
     start_date = datetime.strptime(body.from_time, "%Y-%m-%d").date()
@@ -74,7 +75,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
         gpd.GeoSeries([destination_coord], crs="EPSG:4326").to_crs("EPSG:32633").iloc[0]
     )
 
-    graph = get_graph_with_traffic_cached(
+    current_graph = get_graph_with_traffic_cached(
         base_graph=unmodified_graph,
         cache=traffic_graph_cache,
         edge_jam_overlaps=edge_jam_overlaps,
@@ -83,56 +84,18 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
     )     
 
     route, length, time_with_traffic, time_without_traffic, streets = find_route(
-        graph=graph,
+        graph=current_graph,
         source_coord=source,
         destination_coord=destination,
-        algorithm="alt",
+        algorithm=algorithm,
         landmarks=landmarks,
         use_traffic=use_traffic,
     )
 
     if route:
-        # Convert route back to WGS84 for output
-        route = gpd.GeoSeries([route], crs="EPSG:32633").to_crs("EPSG:4326")[0]
-        path = [[coord[1], coord[0]] for coord in route.coords]        
-
-        # Convert each street segment to WGS84
-        for segment in streets:
-            linestring = LineString(segment["path"])
-            linestring = gpd.GeoSeries([linestring], crs="EPSG:32633").to_crs("EPSG:4326")[0]
-            segment["path"] = [[coord[1], coord[0]] for coord in linestring.coords]
-            
-            # Map severity to colors
-            severity = segment["severity"]
-            if severity == "0":
-                segment["color"] = "green"  # No traffic issues
-            elif severity == "1":
-                segment["color"] = "orange"  # Moderate traffic
-            elif severity == "2":
-                segment["color"] = "red"  # Congested traffic
-            else:
-                segment["color"] = "green"  # Default to green for unknown severity
-        
-        # Find the first street and last street names
-        src_street, dst_street = "", ""
-        for segment in streets:
-            if segment["street_name"] != "":
-                src_street = segment["street_name"]
-                break
-        for segment in reversed(streets):
-            if segment["street_name"] != "":
-                dst_street = segment["street_name"]
-                break
-        
-        return {
-            "streets_coord": streets,
-            "route": path,
-            "src_street": src_street,
-            "dst_street": dst_street,
-            "length": length,
-            "time_with_traffic": time_with_traffic,
-            "time_without_traffic": time_without_traffic,
-        }
+        return prepare_route_response(
+            route, length, time_with_traffic, time_without_traffic, streets
+        )
     else:
         # No route found
         return {
@@ -140,4 +103,7 @@ async def find_route_by_coord(body: RoutingCoordRequestBody):
             "route": [],
             "src_street": "",
             "dst_street": "",
+            "length": 0.0,
+            "time_with_traffic": 0.0,
+            "time_without_traffic": 0.0,
         }

@@ -3,11 +3,72 @@
 from datetime import datetime
 from heapq import heappop, heappush
 from typing import Literal
-
+import geopandas as gpd
 import networkx as nx
 from shapely import LineString, Point
 
 from graph import find_projected_point, split_edge_at_point
+
+
+def prepare_route_response(
+    route, length, time_with_traffic, time_without_traffic, streets
+):
+    """
+    Prepare the route response for the API.
+
+    Args:
+        route (LineString): The route as a LineString.
+        length (float): Total length of the route in meters.
+        time_with_traffic (float): Estimated traversal time with traffic in seconds.
+        time_without_traffic (float): Estimated traversal time without traffic in seconds.
+        streets (list): List of street segments with coordinates and names.
+
+    Returns:
+        float: Estimated traversal time in seconds.
+    """
+    # Convert route back to WGS84 for output
+    route_wgs84 = gpd.GeoSeries([route], crs="EPSG:32633").to_crs("EPSG:4326")[0]
+    path = [[coord[1], coord[0]] for coord in route_wgs84.coords]
+
+    # Convert each street segment to WGS84 and assign colors based on severity
+    for segment in streets:
+        linestring = LineString(segment["path"])
+        linestring_wgs84 = gpd.GeoSeries([linestring], crs="EPSG:32633").to_crs(
+            "EPSG:4326"
+        )[0]
+        segment["path"] = [[coord[1], coord[0]] for coord in linestring_wgs84.coords]
+
+        # Map severity to colors
+        severity = segment["severity"]
+        if severity == "0":
+            segment["color"] = "green"  # No traffic issues
+        elif severity == "1":
+            segment["color"] = "orange"  # Moderate traffic
+        elif severity == "2":
+            segment["color"] = "red"  # Congested traffic
+        else:
+            segment["color"] = "green"  # Default to green for unknown severity
+
+    # Find the first street and last street names
+    src_street, dst_street = "", ""
+    for segment in streets:
+        if segment["street_name"] != "":
+            src_street = segment["street_name"]
+            break
+    for segment in reversed(streets):
+        if segment["street_name"] != "":
+            dst_street = segment["street_name"]
+            break
+
+    return {
+        "streets_coord": streets,
+        "route": path,
+        "src_street": src_street,
+        "dst_street": dst_street,
+        "length": length,
+        "time_with_traffic": time_with_traffic,
+        "time_without_traffic": time_without_traffic,
+    }
 
 
 def straightline_heuristic(a: Point, b: Point) -> float:

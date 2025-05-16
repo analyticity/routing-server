@@ -19,7 +19,7 @@ def osm_data_for_area(area: str) -> dict:
 
     # All roads in the area for car use which are publicly accessible
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:60];
     area[name="{area}"]->.searchArea;
     (
         way["highway"~"motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service"]["access"!~"private|no"]["motor_vehicle"!~"no"]["vehicle"!~"private"](area.searchArea);

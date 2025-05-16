@@ -1,5 +1,6 @@
 # https://github.com/fastapi/fastapi/blob/master/.gitignore
 
+.env
 .idea
 .ipynb_checkpoints
 .mypy_cache

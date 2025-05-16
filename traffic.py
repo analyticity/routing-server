@@ -5,6 +5,7 @@ import time
 import geopandas as gpd
 import networkx as nx
 import pandas as pd
+import psycopg2
 from shapely import Point
 from shapely.ops import unary_union
 
@@ -56,7 +57,7 @@ def get_edge_jam_overlaps(
 
     for u, v, key, edge in graph.edges(data=True, keys=True):
         processed_count += 1
-        if processed_count % 1000 == 0:
+        if processed_count % 5000 == 0:
             print(
                 f"\tProcessed {processed_count} edges out of {total} = {processed_count / total:.2%}"
             )
@@ -184,25 +185,27 @@ def update_graph_with_traffic(
         try:
             # Access the specific edge's data using u, v, and the key
             edge_data = graph.edges[u, v, key]
-            
-            edge_length = edge_data.get("length") # Meters
-            base_time = edge_data.get("traversal_time") # Seconds
-            base_speed = edge_data.get("length") / base_time if base_time > 0 else 8.333 # Default speed of 30 km/h
-            seconds_in_range = date_range * 86400 # Total time window in seconds
- 
+
+            edge_length = edge_data.get("length")  # Meters
+            base_time = edge_data.get("traversal_time")  # Seconds
+            base_speed = (
+                edge_data.get("length") / base_time if base_time > 0 else 8.333
+            )  # Default speed of 30 km/h
+            seconds_in_range = date_range * 86400  # Total time window in seconds
+
             # Count traffic events and calculate severity
             num_events = len(jam_rows)
-            if num_events < date_range*3:
+            if num_events < date_range * 3:
                 severity = 0
-            elif num_events < date_range*7:
+            elif num_events < date_range * 7:
                 severity = 1
-            elif num_events >= date_range*7:
+            elif num_events >= date_range * 7:
                 severity = 2
-                
+
             # Total delay time across all jam events (in seconds)
             total_weighted_delay = 0.0
             total_jam_duration = 0.0
-            
+
             for _, jam in jam_rows.iterrows():
                 jam_length = jam["length"]
                 jam_delay = jam["delay"]
@@ -219,18 +222,20 @@ def update_graph_with_traffic(
                 elif jam_delay > 0:
                     segment_scaled_delay = (jam_delay / jam_length) * edge_length
                 else:
-                    continue                    
+                    continue
 
                 total_weighted_delay += segment_scaled_delay * jam_duration
                 total_jam_duration += jam_duration
-            
+
             if total_jam_duration > 0:
                 jam_fraction = min(total_jam_duration / seconds_in_range, 1.0)
                 avg_delay_when_jammed = total_weighted_delay / total_jam_duration
-                adjusted_time = (1 - jam_fraction) * base_time + jam_fraction * (base_time + avg_delay_when_jammed)
+                adjusted_time = (1 - jam_fraction) * base_time + jam_fraction * (
+                    base_time + avg_delay_when_jammed
+                )
             else:
                 adjusted_time = base_time
-                
+
             # Update edge data
             edge_data["is_penalized_by_traffic"] = severity > 0
             edge_data["traffic_severity"] = severity
@@ -244,18 +249,66 @@ def update_graph_with_traffic(
     return graph
 
 
-def load_traffic_data(path: str) -> gpd.GeoDataFrame:
+def load_jam_data_from_db(db_config: dict) -> pd.DataFrame:
     """
-    Load traffic data from a provided GeoJSON file, perform preprocessing, convert CRS and return a GeoDataFrame.
+    Load traffic jam data from a PostgreSQL database and return it as a DataFrame.
 
     Args:
-        path (str): Path to the GeoJSON file containing traffic data.
+        db (dict): Database connection parameters including host, port, user, password, and database name.
+
+    Returns:
+        pd.DataFrame: DataFrame containing traffic jam data.
+
+    """
+    # Connect to PostgreSQL database
+    connection = psycopg2.connect(
+        host=db_config["host"],
+        port=db_config["port"],
+        user=db_config["user"],
+        password=db_config["password"],
+        dbname=db_config["dbname"],
+    )
+    # Get whole table
+    try:
+        cursor = connection.cursor()
+    except psycopg2.Error as e:
+        raise Exception(f"Error connecting to database: {e}")
+    cursor.execute(
+        """
+    SELECT
+        uuid AS id,
+        street,
+        published_at,
+        last_updated,
+        active,
+        delay,
+        speed,
+        jam_length,
+        ST_AsText(jam_line::geometry) AS geometry
+    FROM
+        jams
+    """
+    )
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]
+    cursor.close()
+    connection.close()
+
+    return pd.DataFrame(rows, columns=columns)
+
+
+def preprocess_jams(jams: pd.DataFrame) -> gpd.GeoDataFrame:
+    """
+    Preprocess traffic data from a DataFrame, perform preprocessing, convert CRS and return a GeoDataFrame.
+
+    Args:
+        jams (pd.DataFrame): DataFrame containing traffic data with 'geometry' column in WKT format.
 
     Returns:
         gpd.GeoDataFrame: A GeoDataFrame containing the processed traffic data.
     """
-    # Load the traffic data from a GeoJSON file
-    traffic_data = gpd.read_file(path)
+    geometry = gpd.GeoSeries.from_wkt(jams["geometry"])
+    traffic_data = gpd.GeoDataFrame(jams, geometry=geometry, crs="EPSG:4326")
 
     # Check if the data is in EPSG:4326
     if traffic_data.crs is None:
@@ -264,12 +317,14 @@ def load_traffic_data(path: str) -> gpd.GeoDataFrame:
     traffic_data.to_crs("EPSG:32633", inplace=True)
 
     # Convert pubMillis to datetime
-    traffic_data["started"] = pd.to_datetime(traffic_data["pubMillis"], unit="ms")
-    traffic_data["lastupdated"] = pd.to_datetime(traffic_data["lastupdated"], unit="ms")
+    traffic_data["started"] = pd.to_datetime(traffic_data["published_at"], unit="ms")
+    traffic_data["lastupdated"] = pd.to_datetime(
+        traffic_data["last_updated"], unit="ms"
+    )
     traffic_data["date"] = traffic_data["started"].dt.date
 
     # If finished, calculate duration
-    traffic_data["finished"] = traffic_data["finished"].astype(bool)
+    traffic_data["finished"] = ~traffic_data["active"].astype(bool)
     traffic_data.loc[traffic_data["finished"], "duration"] = (
         traffic_data["lastupdated"] - traffic_data["started"]
     ).dt.total_seconds()

@@ -1,16 +1,26 @@
 # main.py
+import os
 from copy import deepcopy
 from datetime import datetime
 
 import geopandas as gpd
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from shapely import LineString, Point
+from shapely import Point
 
-from graph import create_graph_from_base, get_routing_base, preprocess_alt, create_graph_cache, get_graph_with_traffic_cached 
+from graph import (
+    create_graph_cache,
+    create_graph_from_base,
+    get_graph_with_traffic_cached,
+    get_routing_base,
+    preprocess_alt,
+)
 from models import RoutingCoordRequestBody
-from routing import find_route
-from traffic import get_edge_jam_overlaps, load_traffic_data
+from routing import find_route, prepare_route_response
+from traffic import get_edge_jam_overlaps, load_jam_data_from_db, preprocess_jams
+
+load_dotenv()
 
 app = FastAPI()
 app.add_middleware(
@@ -22,12 +32,20 @@ app.add_middleware(
 )
 
 AREA = "Brno"
+db_config = {
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT")),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "dbname": os.getenv("DB_NAME"),
+}
 
 base = get_routing_base(AREA)
 unmodified_graph = create_graph_from_base(base)
 graph = deepcopy(unmodified_graph)
 landmarks = preprocess_alt(graph=unmodified_graph)
-traffic = load_traffic_data("data/partial_processed_jams.geojson")
+jams = load_jam_data_from_db(db_config)
+traffic = preprocess_jams(jams)
 edge_jam_overlaps = get_edge_jam_overlaps(
     graph=unmodified_graph,
     traffic=traffic,

@@ -24,6 +24,7 @@ def create_graph_cache():
     traffic_graph_cache: dict[tuple[datetime, datetime], nx.MultiDiGraph] = {}
     return traffic_graph_cache
 
+
 def get_graph_with_traffic_cached(
     base_graph: nx.MultiDiGraph,
     cache: dict[tuple[date, date], nx.MultiDiGraph],
@@ -59,7 +60,9 @@ def get_graph_with_traffic_cached(
     print(f"Number of days with traffic in range: {num_days}")
     if num_days > 0:
         graph_copy = deepcopy(base_graph)
-        graph_copy = update_graph_with_traffic(graph_copy, date_range_overlaps, num_days)
+        graph_copy = update_graph_with_traffic(
+            graph_copy, date_range_overlaps, num_days
+        )
         cache[key] = graph_copy
         return graph_copy
     else:
@@ -196,9 +199,9 @@ def preprocess_alt(
                 graph.nodes[node]["landmark_traversal_time"][
                     landmark
                 ] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_traversal_time"][landmark][
-                "to"
-            ] = traversal_time
+            graph.nodes[node]["landmark_traversal_time"][landmark]["to"] = (
+                traversal_time
+            )
 
         # Traversal times to landmark using reversed graph
         traversal_time_to_L = nx.single_source_dijkstra_path_length(
@@ -209,9 +212,9 @@ def preprocess_alt(
                 graph.nodes[node]["landmark_traversal_time"][
                     landmark
                 ] = {}  # Ensure dict exists
-            graph.nodes[node]["landmark_traversal_time"][landmark][
-                "from"
-            ] = traversal_time
+            graph.nodes[node]["landmark_traversal_time"][landmark]["from"] = (
+                traversal_time
+            )
 
     return landmark_nodes
 

@@ -131,7 +131,10 @@ def alt_heuristic(a: Point, b: Point, graph: nx.MultiDiGraph, landmarks: list) -
 
 
 def astar_route(
-    graph: nx.MultiDiGraph, source_node: Point, destination_node: Point, use_traffic: bool = True
+    graph: nx.MultiDiGraph,
+    source_node: Point,
+    destination_node: Point,
+    use_traffic: bool = True,
 ) -> LineString:
     """
     Find the shortest path between two nodes in a graph using A* algorithm.
@@ -190,7 +193,11 @@ def astar_route(
 
 
 def alt_route(
-    graph: nx.MultiDiGraph, landmarks: list, source_node: Point, destination_node: Point, use_traffic: bool = True
+    graph: nx.MultiDiGraph,
+    landmarks: list,
+    source_node: Point,
+    destination_node: Point,
+    use_traffic: bool = True,
 ) -> LineString:
     """
     Find the shortest path between two nodes using A* with ALT heuristic.
@@ -329,7 +336,9 @@ def find_route(
 
         if source_node and destination_node:
             try:
-                path = alt_route(graph, landmarks, source_node, destination_node, use_traffic)
+                path = alt_route(
+                    graph, landmarks, source_node, destination_node, use_traffic
+                )
             except nx.NetworkXNoPath or nx.NodeNotFound:
                 return []
         else:
@@ -344,7 +353,7 @@ def find_route(
     total_length = 0.0
     total_traversal_time = 0.0
     total_traversal_time_without_traffic = 0.0
-    
+
     for i in range(len(path.coords) - 1):
         start = Point(path.coords[i])
         end = Point(path.coords[i + 1])
@@ -355,20 +364,28 @@ def find_route(
             original_time = edge_data.get("traversal_time", 0.0)
             traffic_time = edge_data.get("traversal_time_with_traffic", original_time)
             street_name = edge_data.get("name", "")
-            
+
             # Get traffic severity (0-2)
             severity = str(edge_data.get("traffic_severity", 0))
-            
+
             # Add segment to dictionary
-            street_segments.append({
-                "street_name": street_name,
-                "path": [path.coords[i], path.coords[i + 1]],
-                "severity": severity,
-            })
-            
+            street_segments.append(
+                {
+                    "street_name": street_name,
+                    "path": [path.coords[i], path.coords[i + 1]],
+                    "severity": severity,
+                }
+            )
+
             total_length += segment_length
             total_traversal_time_without_traffic += original_time
             # Use traffic-adjusted time for final calculation
             total_traversal_time += traffic_time
 
-    return path, total_length, total_traversal_time, total_traversal_time_without_traffic, street_segments
+    return (
+        path,
+        total_length,
+        total_traversal_time,
+        total_traversal_time_without_traffic,
+        street_segments,
+    )

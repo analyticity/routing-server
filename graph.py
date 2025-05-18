@@ -437,17 +437,29 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
     return graph
 
 
-def get_routing_base(area: str) -> gpd.GeoDataFrame:
+def get_routing_base(area: str, local: bool = False) -> gpd.GeoDataFrame:
     """
     Retrieve current map data for a given area from OpenStreetMap and convert it to a GeoDataFrame.
 
     Args:
         area (str): Name of the area to query, e.g., 'Brno', 'South Moravian Region', 'Czech Republic'.
+        local (bool): If True, use cached OSM data instead of querying the API.
 
     Returns:
         gpd.GeoDataFrame: GeoDataFrame containing the routing base data.
     """
-    osm_data = osm_data_for_area(area)
+    if local:
+        # Load local OSM data from a file
+        try:
+            routing_base = gpd.read_file(f"data/routing_base_{area}.geojson")
+            return routing_base
+        except Exception:
+            pass # Continue by querying the API
+    # Query OSM data from the API
+    try:
+        osm_data = osm_data_for_area(area)
+    except Exception as e:
+        raise ValueError(f"Error retrieving OSM data: {e}")
     if not osm_data:
         raise ValueError(f"No OSM data found for area: {area}")
     routing_base = gpd.GeoDataFrame.from_features(osm_data["features"], crs="OGC:CRS84")
@@ -466,6 +478,6 @@ def get_routing_base(area: str) -> gpd.GeoDataFrame:
     routing_base = routing_base.drop(columns=["tags"])
 
     # Save the routing base to a GeoJSON file
-    # routing_base.to_file("data/sample_routing_base.geojson", driver="GeoJSON")
+    routing_base.to_file(f"data/routing_base_{area}.geojson", driver="GeoJSON")
 
     return routing_base

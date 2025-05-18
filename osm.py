@@ -15,6 +15,8 @@ def osm_data_for_area(area: str) -> dict:
         dict: Response data from the Overpass API in JSON format.
     """
     url = "https://overpass-api.de/api/interpreter"
+    fallback_url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     # All roads in the area for car use which are publicly accessible
@@ -30,8 +32,13 @@ def osm_data_for_area(area: str) -> dict:
     """
 
     # Make the request and ensure successful response
-    response = requests.post(url, data=query, headers=headers)
-    response.raise_for_status()
+    try:
+        response = requests.post(url, data=query, headers=headers)
+        response.raise_for_status()
+    except requests.exceptions.RequestException:
+        # If the first request fails, try the fallback URL
+        response = requests.post(fallback_url, data=query, headers=headers)
+        response.raise_for_status()
     response_json = response.json()
 
     # Convert the OSM format to a GeoJSON

@@ -1,7 +1,7 @@
 # main.py
 import os
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import geopandas as gpd
 from dotenv import load_dotenv
@@ -31,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-AREA = "Brno"
+AREA = "Brno"  # Area to be used for routing
 db_config = {
     "host": os.getenv("DB_HOST"),
     "port": int(os.getenv("DB_PORT")),
@@ -40,7 +40,7 @@ db_config = {
     "dbname": os.getenv("DB_NAME"),
 }
 
-base = get_routing_base(AREA)
+base = get_routing_base(AREA, local=True)
 unmodified_graph = create_graph_from_base(base)
 graph = deepcopy(unmodified_graph)
 landmarks = preprocess_alt(graph=unmodified_graph)
@@ -51,7 +51,14 @@ edge_jam_overlaps = get_edge_jam_overlaps(
     traffic=traffic,
 )
 traffic_graph_cache = create_graph_cache()
-
+# Cache the last week of traffic data
+get_graph_with_traffic_cached(
+        base_graph=unmodified_graph,
+        cache=traffic_graph_cache,
+        edge_jam_overlaps=edge_jam_overlaps,
+        start_date=datetime.now().date() - timedelta(days=7),
+        end_date=datetime.now().date(),
+)
 
 @app.post("/find_route_by_coord")
 async def find_route_by_coord(body: RoutingCoordRequestBody):

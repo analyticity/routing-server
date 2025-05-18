@@ -276,22 +276,39 @@ def load_jam_data_from_db(db_config: dict, n_results: int = None) -> pd.DataFram
         cursor = connection.cursor()
     except psycopg2.Error as e:
         raise Exception(f"Error connecting to database: {e}")
-    cursor.execute(
+    if n_results is None:
+        query = """
+        SELECT
+            uuid AS id,
+            street,
+            published_at,
+            last_updated,
+            active,
+            delay,
+            speed,
+            jam_length AS length,
+            ST_AsText(jam_line::geometry) AS geometry
+        FROM
+            jams
+  """
+    else:
+        query = f"""
+        SELECT
+            uuid AS id,
+            street,
+            published_at + INTERVAL '27 days' AS published_at,
+            last_updated + INTERVAL '27 days' AS last_updated,
+            active,
+            delay,
+            speed,
+            jam_length AS length,
+            ST_AsText(jam_line::geometry) AS geometry
+        FROM
+            jams
+        LIMIT {n_results}
         """
-    SELECT
-        uuid AS id,
-        street,
-        published_at,
-        last_updated,
-        active,
-        delay,
-        speed,
-        jam_length,
-        ST_AsText(jam_line::geometry) AS geometry
-    FROM
-        jams
-    """
-    )
+        
+    cursor.execute(query)
     rows = cursor.fetchall()
     columns = [desc[0] for desc in cursor.description]
     cursor.close()
@@ -312,7 +329,9 @@ def preprocess_jams(jams: pd.DataFrame) -> gpd.GeoDataFrame:
     """
     geometry = gpd.GeoSeries.from_wkt(jams["geometry"])
     traffic_data = gpd.GeoDataFrame(jams, geometry=geometry, crs="EPSG:4326")
-
+    if traffic_data.empty:
+        return traffic_data
+    
     # Check if the data is in EPSG:4326
     if traffic_data.crs is None:
         raise ValueError("No CRS found in the file")
@@ -359,8 +378,5 @@ def preprocess_jams(jams: pd.DataFrame) -> gpd.GeoDataFrame:
         traffic_data.set_index("id", inplace=True, verify_integrity=True)
     else:
         raise ValueError("Duplicate IDs found in traffic data")
-
-    # Save traffic data to a GeoJSON file
-    traffic_data.to_file("data/processed_traffic.geojson", driver="GeoJSON")
 
     return traffic_data

@@ -221,9 +221,11 @@ def update_graph_with_traffic(
                     segment_scaled_delay = standstill_time - base_time
                 elif jam_delay > 0:
                     segment_scaled_delay = (jam_delay / jam_length) * edge_length
+                    
                 else:
                     continue
-
+                
+                segment_scaled_delay *= 2.0
                 total_weighted_delay += segment_scaled_delay * jam_duration
                 total_jam_duration += jam_duration
 
@@ -237,7 +239,7 @@ def update_graph_with_traffic(
                 adjusted_time = base_time
 
             # Update edge data
-            edge_data["is_penalized_by_traffic"] = severity > 0
+            edge_data["is_penalized_by_traffic"] = num_events > 0
             edge_data["traffic_severity"] = severity
             edge_data["num_traffic_events"] = num_events
             edge_data["traversal_time_with_traffic"] = adjusted_time
@@ -249,12 +251,13 @@ def update_graph_with_traffic(
     return graph
 
 
-def load_jam_data_from_db(db_config: dict) -> pd.DataFrame:
+def load_jam_data_from_db(db_config: dict, n_results: int = None) -> pd.DataFrame:
     """
     Load traffic jam data from a PostgreSQL database and return it as a DataFrame.
 
     Args:
-        db (dict): Database connection parameters including host, port, user, password, and database name.
+        db_config (dict): Database connection parameters including host, port, user, password, and database name.
+        n_results (int, optional): Number of results to limit the query. If None, all results are fetched.
 
     Returns:
         pd.DataFrame: DataFrame containing traffic jam data.

@@ -1,6 +1,7 @@
 # traffic.py
 
 import time
+import os
 
 import geopandas as gpd
 import networkx as nx
@@ -11,6 +12,14 @@ from shapely.ops import unary_union
 
 EdgeKeyTuple = tuple[Point, Point, int]
 JamOverlapResult = list[tuple[EdgeKeyTuple, gpd.GeoDataFrame]]
+
+db_config = {
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT")),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "dbname": os.getenv("DB_NAME"),
+}
 
 
 def get_edge_jam_overlaps(
@@ -39,14 +48,14 @@ def get_edge_jam_overlaps(
     min_overlap_fraction = 0.75
 
     start_time = time.time()
-    edge_jam_overlaps = []
+    edge_jam_overlaps = {}
 
     try:
         traffic_spatial_index = traffic.sindex
         print(f"Spatial index from {len(traffic)} traffic segments")
     except Exception as e:
         print(f"Error getting spatial index: {e}")
-        return []
+        return {}
 
     # Go over all edges in the graph
     print(f"Go over {graph.number_of_edges()} road edges")
@@ -147,7 +156,7 @@ def get_edge_jam_overlaps(
     print(f"Total filtering time {end_time - start_time:.2f} seconds")
 
     edge_jam_overlaps_by_date = {}
-    for (u, v, key), jam_rows in edge_jam_overlaps:
+    for (u, v, key), jam_rows in edge_jam_overlaps.items():
         for date in jam_rows["date"].unique():
             if date not in edge_jam_overlaps_by_date:
                 edge_jam_overlaps_by_date[date] = []
@@ -251,7 +260,7 @@ def update_graph_with_traffic(
     return graph
 
 
-def load_jam_data_from_db(db_config: dict, n_results: int = None) -> pd.DataFrame:
+def load_jam_data_from_db(n_results: int = None) -> pd.DataFrame:
     """
     Load traffic jam data from a PostgreSQL database and return it as a DataFrame.
 

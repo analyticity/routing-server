@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY . /app
 
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-CMD [ "uvicorn", "main:app", "--port=8001", "--host=0.0.0.0", "--workers=10"]
+EXPOSE 8001
+
+CMD [ "uvicorn", "main:app", "--port=8001", "--host=0.0.0.0", "--workers=1"]

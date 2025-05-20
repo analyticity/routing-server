@@ -8,3 +8,4 @@ pydantic==2.11.1
 python-dotenv==1.1.0
 Requests==2.32.3
 Shapely==2.1.0
+uvicorn==0.34.2

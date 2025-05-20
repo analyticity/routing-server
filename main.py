@@ -1,4 +1,11 @@
-# main.py
+"""
+Filename: main.py
+Author: Matyáš Strelec
+Email: xstrel03@vut.cz
+Date: 2025-05-20
+Project: Routing Server
+"""
+
 from copy import deepcopy
 from datetime import datetime, timedelta
 import asyncio

@@ -1,4 +1,10 @@
-# routing.py
+"""
+Filename: routing.py
+Author: Matyáš Strelec
+Email: xstrel03@vut.cz
+Date: 2025-05-20
+Project: Routing Server
+"""
 
 from heapq import heappop, heappush
 from typing import Literal

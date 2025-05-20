@@ -1,4 +1,10 @@
-# graph.py
+"""
+Filename: graph.py
+Author: Matyáš Strelec
+Email: xstrel03@vut.cz
+Date: 2025-05-20
+Project: Routing Server
+"""
 
 import math
 import random

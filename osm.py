@@ -1,4 +1,10 @@
-# osm.py
+"""
+Filename: osm.py
+Author: Matyáš Strelec
+Email: xstrel03@vut.cz
+Date: 2025-05-20
+Project: Routing Server
+"""
 
 import osm2geojson
 import requests

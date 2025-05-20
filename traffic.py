@@ -1,4 +1,10 @@
-# traffic.py
+"""
+Filename: traffic.py
+Author: Matyáš Strelec
+Email: xstrel03@vut.cz
+Date: 2025-05-20
+Project: Routing Server
+"""
 
 import time
 import os

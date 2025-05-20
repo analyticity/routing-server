@@ -16,7 +16,7 @@ def osm_data_for_area(area: str) -> dict:
     """
     url = "https://overpass-api.de/api/interpreter"
     fallback_url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
-    
+
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     # All roads in the area for car use which are publicly accessible

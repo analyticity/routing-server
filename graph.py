@@ -5,7 +5,8 @@ import random
 from copy import deepcopy
 from datetime import date, datetime
 from typing import Tuple
-
+import pickle
+import pandas as pd
 import geopandas as gpd
 import networkx as nx
 from shapely.geometry import LineString, MultiLineString, Point
@@ -48,24 +49,50 @@ def get_graph_with_traffic_cached(
     key = (start_date, end_date)
     if key in cache:
         return cache[key]
+    else:
+        try:
+            print(f"Loading graph from file for {start_date} to {end_date}")
+            with open(f"data/graph_{start_date}_{end_date}.pkl", "rb") as f:
+                graph = pickle.load(f)
+                cache[key] = graph
+                return graph
+        except FileNotFoundError:
+            pass
 
-    # Get edge-jam overlaps for the specified date range
-    available_dates = sorted(edge_jam_overlaps.keys())
-    date_range_dates = [d for d in available_dates if start_date <= d <= end_date]
-    date_range_overlaps = []
-    if date_range_dates:
-        for date in date_range_dates:
-            date_range_overlaps.extend(edge_jam_overlaps[date])
-    num_days = len(date_range_dates)
-    print(f"Number of days with traffic in range: {num_days}")
+    print(f"Getting graph with traffic for {start_date} to {end_date}")
+
+    num_days = (end_date - start_date).days
+
+    date_range_overlaps = {}
+    days = [start_date + pd.Timedelta(days=i) for i in range(num_days + 1)]
+    actual_days = []
+    for day in days:
+        if day in edge_jam_overlaps.keys():
+            actual_days.append(day)
+            for edge_key, jam_rows in edge_jam_overlaps[day].items():
+                if edge_key not in date_range_overlaps:
+                    date_range_overlaps[edge_key] = jam_rows
+                else:
+                    date_range_overlaps[edge_key] = pd.concat(
+                        [date_range_overlaps[edge_key], jam_rows]
+                    )
+
+    num_days = len(actual_days)
+
     if num_days > 0:
         graph_copy = deepcopy(base_graph)
         graph_copy = update_graph_with_traffic(
             graph_copy, date_range_overlaps, num_days
         )
         cache[key] = graph_copy
+        print(f"Saving graph to file for {start_date} to {end_date}")
+        with open(f"data/graph_{start_date}_{end_date}.pkl", "wb") as f:
+            pickle.dump(graph_copy, f)
         return graph_copy
     else:
+        print(
+            f"No traffic data available for {start_date} to {end_date}, using base graph"
+        )
         cache[key] = base_graph
         return base_graph
 
@@ -359,6 +386,8 @@ def create_graph_from_base(routing_base: gpd.GeoDataFrame) -> nx.MultiDiGraph:
     Returns:
         nx.MultiDiGraph: Directed graph representing the routing base.
     """
+    print("Creating graph from routing base")
+
     graph = nx.MultiDiGraph()
 
     # Define speed limits for different road types in m/s
@@ -448,13 +477,14 @@ def get_routing_base(area: str, local: bool = False) -> gpd.GeoDataFrame:
     Returns:
         gpd.GeoDataFrame: GeoDataFrame containing the routing base data.
     """
+    print("Retrieving routing base data for area:", area)
     if local:
         # Load local OSM data from a file
         try:
             routing_base = gpd.read_file(f"data/routing_base_{area}.geojson")
             return routing_base
         except Exception:
-            pass # Continue by querying the API
+            pass  # Continue by querying the API
     # Query OSM data from the API
     try:
         osm_data = osm_data_for_area(area)
@@ -470,10 +500,10 @@ def get_routing_base(area: str, local: bool = False) -> gpd.GeoDataFrame:
         routing_base[tag] = routing_base["tags"].apply(lambda x: x.get(tag, ""))
 
     # Debug for visualization on geojson.io
-    routing_base["stroke"] = routing_base.apply(
-        lambda x: "#{:06x}".format(hash(x["geometry"]) % 0xFFFFFF), axis=1
-    )
-    routing_base["stroke-width"] = 5
+    # routing_base["stroke"] = routing_base.apply(
+    #     lambda x: "#{:06x}".format(hash(x["geometry"]) % 0xFFFFFF), axis=1
+    # )
+    # routing_base["stroke-width"] = 5
 
     routing_base = routing_base.drop(columns=["tags"])
 

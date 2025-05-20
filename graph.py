@@ -511,3 +511,95 @@ def get_routing_base(area: str, local: bool = False) -> gpd.GeoDataFrame:
     routing_base.to_file(f"data/routing_base_{area}.geojson", driver="GeoJSON")
 
     return routing_base
+
+
+def export_graph_to_geojson(
+    graph: nx.MultiDiGraph, output_path: str, traffic_only: bool = False
+) -> None:
+    """
+    Export the graph to a GeoJSON file with all edge data.
+    Coordinates are converted to WGS84 (EPSG:4326).
+
+    Args:
+        graph: The NetworkX MultiDiGraph to export.
+        output_path: Path where the GeoJSON file will be saved.
+        traffic_only: If True, only export segments that are penalized by traffic. Defaults to False.
+    """
+    import json
+
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    features = []
+
+    # Process each edge
+    for u, v, key, data in graph.edges(data=True, keys=True):
+        # Skip non-traffic segments if traffic_only is True
+        if traffic_only and not data.get("is_penalized_by_traffic", False):
+            continue
+
+        # Create a LineString geometry from the edge coordinates
+        if "geometry" in data:
+            geometry = data["geometry"]
+        else:
+            geometry = LineString([u, v])
+
+        # Create properties dictionary with all edge attributes
+        properties = {
+            "id": data.get("id", ""),
+            "name": data.get("name", ""),
+            "highway": data.get("highway", "unclassified"),
+            "oneway": data.get("oneway", "no"),
+            "length": data.get("length", 0.0),
+            "traversal_time": data.get("traversal_time", 0.0),
+            "traversal_time_with_traffic": data.get("traversal_time_with_traffic", 0.0),
+            "is_penalized_by_traffic": data.get("is_penalized_by_traffic", False),
+            "avg_daily_delay": data.get("avg_daily_delay", 0.0),
+            "source": (u.x, u.y),
+            "target": (v.x, v.y),
+        }
+
+        # Create feature
+        feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[coord[0], coord[1]] for coord in geometry.coords],
+            },
+            "properties": properties,
+        }
+
+        features.append(feature)
+
+    # Create GeoJSON structure
+    geojson = {"type": "FeatureCollection", "features": features}
+
+    # Convert to GeoDataFrame and transform coordinates
+    gdf = gpd.GeoDataFrame.from_features(geojson["features"], crs="EPSG:32633")
+    gdf = gdf.to_crs("EPSG:4326")
+
+    # Convert back to GeoJSON
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [
+                        [coord[0], coord[1]] for coord in row.geometry.coords
+                    ],
+                },
+                "properties": row.drop("geometry").to_dict(),
+            }
+            for _, row in gdf.iterrows()
+        ],
+    }
+
+    # Write to file
+    with open(output_path, "w") as f:
+        json.dump(geojson, f, indent=2)
+
+    print(f"Graph exported to {output_path}")
+    if traffic_only:
+        print(f"Exported {len(features)} segments with traffic penalties")

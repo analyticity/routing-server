@@ -2,11 +2,14 @@
 
 import time
 import os
+import shapely
+from collections import defaultdict
 
 import geopandas as gpd
 import networkx as nx
 import pandas as pd
 import psycopg2
+from psycopg2.extras import execute_values
 from shapely import Point
 from shapely.ops import unary_union
 
@@ -50,13 +53,70 @@ def get_edge_jam_overlaps(
     start_time = time.time()
     edge_jam_overlaps = {}
 
+    # Load edge_jam_overlaps from database
+    connection = psycopg2.connect(
+        host=db_config["host"],
+        port=db_config["port"],
+        user=db_config["user"],
+        password=db_config["password"],
+        dbname=db_config["dbname"],
+    )
+    try:
+        cursor = connection.cursor()
+    except psycopg2.Error as e:
+        raise Exception(f"Error connecting to database: {e}")
+
+    # Get edge_jam_overlaps from DB
+    query = "SELECT DISTINCT unnest(jam_uuids) FROM edge_jam_overlaps"
+    cursor.execute(query)
+
+    db_jam_uuids_nested = cursor.fetchall()
+    # Get all jam_uuids from edge_jam_overlaps
+    if db_jam_uuids_nested:
+        db_jam_uuids = set.union(*(set(x) for x in db_jam_uuids_nested))
+    else:
+        db_jam_uuids = set()
+
+    # Get edge_jam_overlaps from DB
+    query = "SELECT u, v, k, jam_uuids FROM edge_jam_overlaps"
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    db_edge_jam_overlaps = {
+        (shapely.from_wkt(row[0]), shapely.from_wkt(row[1]), row[2]): row[3]
+        for row in rows
+    }
+    edge_jam_overlaps = {}
+
+    # Get all jam_uuids from traffic
+    traffic_jam_uuids = set(traffic.index)
+
+    # Replace the jam_uuids with the actual jam rows GDFs
+    for (u, v, key), jam_uuids in db_edge_jam_overlaps.items():
+        valid_uuids = [uuid for uuid in jam_uuids if uuid in traffic_jam_uuids]
+        jam_rows = traffic.loc[valid_uuids]
+        dates = jam_rows["date"].unique()
+        if jam_rows.empty:
+            continue
+        for d in dates:
+            if d not in edge_jam_overlaps:
+                edge_jam_overlaps[d] = {}
+            if (u, v, key) not in edge_jam_overlaps[d]:
+                edge_jam_overlaps[d][(u, v, key)] = jam_rows
+            else:
+                edge_jam_overlaps[d][(u, v, key)] = pd.concat(
+                    [edge_jam_overlaps[d][(u, v, key)], jam_rows]
+                )
+
+    # Filter the traffic GeoDataFrame to exclude jams that are already in the edge_jam_overlaps dict
+    traffic = traffic[~traffic.index.isin(db_jam_uuids)]
+
     try:
         traffic_spatial_index = traffic.sindex
         print(f"Spatial index from {len(traffic)} traffic segments")
     except Exception as e:
         print(f"Error getting spatial index: {e}")
         return {}
-
+    edge_jam_overlaps_to_db = []
     # Go over all edges in the graph
     print(f"Go over {graph.number_of_edges()} road edges")
     total = graph.number_of_edges()
@@ -141,7 +201,18 @@ def get_edge_jam_overlaps(
                 jam_indices = list(intersecting_indices)
                 # find the jam rows from gdf
                 jam_rows = candidate_rows.loc[jam_indices]
-                edge_jam_overlaps.append(((u, v, key), jam_rows))
+                for i, jam_row in jam_rows.iterrows():
+                    date = jam_row["date"]
+                    if date not in edge_jam_overlaps:
+                        edge_jam_overlaps[date] = {}
+                    if (u, v, key) not in edge_jam_overlaps[date]:
+                        edge_jam_overlaps[date][(u, v, key)] = jam_rows
+                    else:
+                        edge_jam_overlaps[date][(u, v, key)] = pd.concat(
+                            [edge_jam_overlaps[date][(u, v, key)], jam_rows]
+                        )
+                    if jam_row["finished"] and i not in db_jam_uuids:
+                        edge_jam_overlaps_to_db.append((u.wkt, v.wkt, key, [i]))
 
         except Exception as e:
             print(f"Error processing edge: {e}")
@@ -155,17 +226,54 @@ def get_edge_jam_overlaps(
     print(f"Found {overlap_found_count} edges with significant overlap")
     print(f"Total filtering time {end_time - start_time:.2f} seconds")
 
-    edge_jam_overlaps_by_date = {}
-    for (u, v, key), jam_rows in edge_jam_overlaps.items():
-        for date in jam_rows["date"].unique():
-            if date not in edge_jam_overlaps_by_date:
-                edge_jam_overlaps_by_date[date] = []
-            # Filter jam rows for this date
-            date_jam_rows = jam_rows[jam_rows["date"] == date]
-            if not date_jam_rows.empty:
-                edge_jam_overlaps_by_date[date].append(((u, v, key), date_jam_rows))
+    # Find finished jams that are finished but don't have any overlaps, store them as inactive
+    inactive_unmatched_jams = traffic[~traffic.index.isin(db_jam_uuids)]
+    inactive_unmatched_jams = inactive_unmatched_jams[
+        inactive_unmatched_jams["finished"]
+    ]
+    inactive_unmatched_jams = inactive_unmatched_jams[
+        ~inactive_unmatched_jams.index.isin(db_jam_uuids)
+    ]
+    inactive_unmatched_jams = list(inactive_unmatched_jams.index.unique())
+    # Remove duplicates
+    inactive_unmatched_jams = list(set(inactive_unmatched_jams))
+    if inactive_unmatched_jams:
+        edge_jam_overlaps_to_db.append((None, None, None, inactive_unmatched_jams))
 
-    return edge_jam_overlaps_by_date
+    merged = defaultdict(set)
+    for u, v, k, jam_uuids in edge_jam_overlaps_to_db:
+        key = (u, v, k)
+        merged[key].update(jam_uuids)
+    deduplicated = [
+        (u, v, k, list(jam_uuids)) for (u, v, k), jam_uuids in merged.items()
+    ]
+    query = """
+    INSERT INTO edge_jam_overlaps (u, v, k, jam_uuids)
+    VALUES %s
+    ON CONFLICT (u_wkb, v_wkb, k) DO UPDATE
+    SET jam_uuids = (
+        SELECT ARRAY(
+            SELECT DISTINCT e
+            FROM unnest(edge_jam_overlaps.jam_uuids || EXCLUDED.jam_uuids) AS e
+        )
+    )
+    """
+    if deduplicated:
+        execute_values(cursor, query, deduplicated)
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    # Don't use in the graph
+    if (None, None, None) in edge_jam_overlaps:
+        del edge_jam_overlaps[(None, None, None)]
+
+    db_time = time.time()
+    print(
+        f"Inserted {len(edge_jam_overlaps_to_db)} new edge jam overlaps to DB in {db_time - end_time:.2f} seconds"
+    )
+
+    return edge_jam_overlaps
 
 
 def update_graph_with_traffic(
@@ -190,16 +298,13 @@ def update_graph_with_traffic(
     """
     print(f"Applying {len(edge_jam_overlaps)} traffic segments to road graph")
 
-    for (u, v, key), jam_rows in edge_jam_overlaps:
+    for (u, v, key), jam_rows in edge_jam_overlaps.items():
         try:
             # Access the specific edge's data using u, v, and the key
             edge_data = graph.edges[u, v, key]
 
             edge_length = edge_data.get("length")  # Meters
             base_time = edge_data.get("traversal_time")  # Seconds
-            base_speed = (
-                edge_data.get("length") / base_time if base_time > 0 else 8.333
-            )  # Default speed of 30 km/h
             seconds_in_range = date_range * 86400  # Total time window in seconds
 
             # Count traffic events and calculate severity
@@ -230,11 +335,10 @@ def update_graph_with_traffic(
                     segment_scaled_delay = standstill_time - base_time
                 elif jam_delay > 0:
                     segment_scaled_delay = (jam_delay / jam_length) * edge_length
-                    
+
                 else:
                     continue
-                
-                segment_scaled_delay *= 2.0
+
                 total_weighted_delay += segment_scaled_delay * jam_duration
                 total_jam_duration += jam_duration
 
@@ -299,14 +403,17 @@ def load_jam_data_from_db(n_results: int = None) -> pd.DataFrame:
             ST_AsText(jam_line::geometry) AS geometry
         FROM
             jams
+        ORDER BY
+            published_at
+        DESC
   """
     else:
         query = f"""
         SELECT
             uuid AS id,
             street,
-            published_at + INTERVAL '27 days' AS published_at,
-            last_updated + INTERVAL '27 days' AS last_updated,
+            published_at,
+            last_updated,
             active,
             delay,
             speed,
@@ -314,9 +421,12 @@ def load_jam_data_from_db(n_results: int = None) -> pd.DataFrame:
             ST_AsText(jam_line::geometry) AS geometry
         FROM
             jams
+        ORDER BY
+            published_at
+        DESC
         LIMIT {n_results}
         """
-        
+
     cursor.execute(query)
     rows = cursor.fetchall()
     columns = [desc[0] for desc in cursor.description]
@@ -340,7 +450,7 @@ def preprocess_jams(jams: pd.DataFrame) -> gpd.GeoDataFrame:
     traffic_data = gpd.GeoDataFrame(jams, geometry=geometry, crs="EPSG:4326")
     if traffic_data.empty:
         return traffic_data
-    
+
     # Check if the data is in EPSG:4326
     if traffic_data.crs is None:
         raise ValueError("No CRS found in the file")
@@ -372,6 +482,7 @@ def preprocess_jams(jams: pd.DataFrame) -> gpd.GeoDataFrame:
         "date",
         "started",
         "lastupdated",
+        "finished",
         "duration",
         "delay",
         "speed",
@@ -382,6 +493,8 @@ def preprocess_jams(jams: pd.DataFrame) -> gpd.GeoDataFrame:
     for col in traffic_data.columns:
         if col not in columns_to_keep:
             traffic_data.drop(columns=col, inplace=True)
+
+    traffic_data.drop_duplicates(subset=["id"], inplace=True)
 
     if traffic_data["id"].is_unique:
         traffic_data.set_index("id", inplace=True, verify_integrity=True)
